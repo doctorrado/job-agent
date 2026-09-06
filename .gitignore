@@ -1,0 +1,36 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Secrets / environment
+.env
+
+# Personal data — never commit these
+config/profile.yaml
+resumes/
+data/
+
+# Local database
+*.db
+*.sqlite
+*.sqlite3
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# IDE
+.vscode/
+.idea/
+
+# Local-only working notes for Claude Code — not part of the public repo
+CLAUDE.md
