@@ -1,0 +1,41 @@
+# Copy this file to config/profile.yaml and fill in your real details.
+# profile.yaml is gitignored — it's your personal data, not secret, but not
+# something to publish either.
+
+name: "Your Name"
+
+target_roles:
+  - Data Analyst
+  - BI Analyst
+  - Business Analyst
+  - Data Engineer
+  - Analytics Analyst
+  - Reporting Analyst
+  - Operations Analyst
+
+seniority:
+  - entry
+  - junior
+  - associate
+max_years_experience: 3
+
+# Only list skills you can genuinely back up with real experience.
+skills:
+  - Python
+  - SQL
+  - Power BI
+  - Excel
+
+locations:
+  allowed:
+    - Colombia
+    - Remote Colombia
+    - Remote LATAM
+  remote_scopes_ok:
+    - remote_from_colombia
+    - remote_latam
+    - remote_anywhere
+
+work_authorization:
+  authorized_countries: []   # e.g. ["Colombia"]
+  open_to_sponsorship: false

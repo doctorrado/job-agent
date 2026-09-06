@@ -1,7 +1,7 @@
 [project]
 name = "jobagent"
 version = "0.1.0"
-description = description = "AI-powered job search and application assistant"
+description = "AI-powered job search and application assistant"
 readme = "README.md"
 authors = [
     { name = "Andres Torrado", email = "zeverikon@gmail.com" }
