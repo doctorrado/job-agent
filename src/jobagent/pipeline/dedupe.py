@@ -31,8 +31,10 @@ def normalize_text(value: str | None) -> str:
 
 def fuzzy_key(job: Job) -> str:
     """Cross-source identity: same company + title + location, normalized."""
-    return f"{normalize_text(job.company)}|{normalize_text(job.title)}|{normalize_text(job.location)}"
-
+    company = normalize_text(job.company)
+    title = normalize_text(job.title)
+    location = normalize_text(job.location)
+    return f"{company}|{title}|{location}"
 
 def deduplicate(jobs: list[Job]) -> list[Job]:
     """Return one Job per real posting. First occurrence wins."""
