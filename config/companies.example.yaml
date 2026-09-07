@@ -1,0 +1,9 @@
+# Copy to config/companies.yaml. Each entry is a company confirmed to run a
+# public Greenhouse or Lever job board. Add by hand whenever you notice one,
+# or ask Claude to run a company-discovery search pass (see NOTES.md).
+- name: Sezzle
+  platform: greenhouse
+  slug: sezzle
+- name: Linqia
+  platform: greenhouse
+  slug: linqia

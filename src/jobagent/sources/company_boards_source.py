@@ -1,0 +1,90 @@
+"""Fetches every current opening from companies known to run a public
+Greenhouse or Lever job board.
+
+Unlike the other sources, coverage here isn't fixed by some API's limits —
+it's exactly as wide as config/companies.yaml. Growing that list (by hand,
+or via a periodic discovery search) directly grows what this source finds.
+"""
+
+from __future__ import annotations
+
+from datetime import date, datetime
+from pathlib import Path
+
+import httpx
+import yaml
+
+from jobagent.models.job import Job
+from jobagent.sources.base import JobSource
+
+
+class CompanyBoardsSource(JobSource):
+    name = "company_boards"
+
+    def __init__(self, companies_path: Path, client: httpx.Client | None = None) -> None:
+        self.companies_path = companies_path
+        self._client = client or httpx.Client(timeout=10.0)
+
+    def fetch(self) -> list[Job]:
+        companies = yaml.safe_load(self.companies_path.read_text(encoding="utf-8")) or []
+        jobs: list[Job] = []
+        for entry in companies:
+            fetcher = _FETCHERS.get(entry["platform"])
+            if fetcher is None:
+                continue  # unknown platform in the config — skip, don't crash the whole run
+            jobs.extend(fetcher(self._client, entry["slug"], entry["name"]))
+        return jobs
+
+
+def _fetch_greenhouse(client: httpx.Client, slug: str, company: str) -> list[Job]:
+    r = client.get(
+        f"https://boards-api.greenhouse.io/v1/boards/{slug}/jobs", params={"content": "true"}
+    )
+    r.raise_for_status()
+    return [
+        Job(
+            source="greenhouse",
+            source_job_id=str(j["id"]),
+            url=j["absolute_url"],
+            title=j["title"],
+            company=company,
+            location=(j.get("location") or {}).get("name"),
+            description=j.get("content", ""),
+            posted_date=_parse_iso_date(j.get("updated_at")),
+        )
+        for j in r.json().get("jobs", [])
+    ]
+
+
+def _fetch_lever(client: httpx.Client, slug: str, company: str) -> list[Job]:
+    r = client.get(f"https://api.lever.co/v0/postings/{slug}", params={"mode": "json"})
+    r.raise_for_status()
+    return [
+        Job(
+            source="lever",
+            source_job_id=p["id"],
+            url=p["hostedUrl"],
+            title=p["text"],
+            company=company,
+            location=(p.get("categories") or {}).get("location"),
+            description=p.get("descriptionPlain", ""),
+            employment_type=(p.get("categories") or {}).get("commitment"),
+            posted_date=_parse_epoch_ms(p.get("createdAt")),
+        )
+        for p in r.json()
+    ]
+
+
+_FETCHERS = {"greenhouse": _fetch_greenhouse, "lever": _fetch_lever}
+
+
+def _parse_iso_date(value: str | None) -> date | None:
+    if not value:
+        return None
+    return datetime.fromisoformat(value.replace("Z", "+00:00")).date()
+
+
+def _parse_epoch_ms(value: int | None) -> date | None:
+    if not value:
+        return None
+    return datetime.fromtimestamp(value / 1000).date()
