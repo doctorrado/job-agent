@@ -4,8 +4,10 @@ An AI-powered job search and application assistant — built to actually use dur
 
 ## Status
 
-✅ Phase 1 — Foundation: complete (config, logging, `Profile`/`Job` models, CLI, tests)
-🚧 Phase 2 — Job data & sources: next up (`JobSource` interface, Remotive + Adzuna adapters, normalization, dedup, SQLite storage)
+✅ Phase 1 — Foundation: complete
+✅ Phase 2 — Job data & sources: complete (FileSource, RemotiveSource, CompanyBoardsSource; dedupe; SQLite storage; `jobagent fetch`)
+🚧 Phase 3 — Analysis & scoring: next up (transparent match scoring, seniority/location/work-auth detection)
+
 
 ## Why
 
