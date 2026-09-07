@@ -7,6 +7,9 @@ import typer
 from jobagent import __version__
 from jobagent.config import get_settings, load_profile
 from jobagent.logging import configure_logging, get_logger
+from jobagent.pipeline.fetch import run_fetch
+from jobagent.storage.db import make_session_factory
+from jobagent.storage.repository import JobRepository
 
 app = typer.Typer(help="AI-powered job search and application assistant.")
 log = get_logger(__name__)
@@ -33,4 +36,19 @@ def check_profile() -> None:
     typer.echo(
         f"OK: {profile.name} — {len(profile.target_roles)} target roles, "
         f"{len(profile.skills)} skills."
+    )
+
+
+@app.command()
+def fetch() -> None:
+    """Fetch jobs from every active source, dedupe, and store them."""
+    settings = get_settings()
+    session = make_session_factory(settings.db_path)()
+    repository = JobRepository(session)
+    stats = run_fetch(repository)
+    typer.echo(
+        f"Ran {stats['sources_run']} source(s): {stats['raw_fetched']} fetched, "
+        f"{stats['after_dedupe']} after dedupe, {stats['new']} new, "
+        f"{stats['already_seen']} already in the database. "
+        f"Total jobs stored: {repository.count()}."
     )
