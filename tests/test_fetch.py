@@ -36,7 +36,9 @@ def test_fetch_all_skips_a_failing_source():
 def test_run_fetch_stores_new_jobs_and_reports_stats(tmp_path):
     session = make_session_factory(tmp_path / "test.db")()
     repository = JobRepository(session)
-    source = _FakeSource("fake", [_job("1"), _job("2")])
+    source = _FakeSource(
+        "fake", [_job("1", title="Data Analyst"), _job("2", title="Data Engineer")]
+    )
 
     stats = run_fetch(repository, sources=[source])
 
@@ -48,6 +50,7 @@ def test_run_fetch_stores_new_jobs_and_reports_stats(tmp_path):
         "already_seen": 0,
     }
     assert repository.count() == 2
+
 
 
 def test_run_fetch_second_run_finds_nothing_new(tmp_path):
