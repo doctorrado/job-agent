@@ -1,20 +1,21 @@
 """The normalized Job shape every source adapter must produce."""
+
 from __future__ import annotations
 
 from datetime import date, datetime
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import BaseModel, Field, HttpUrl
 
 
-class RemoteType(str, Enum):
+class RemoteType(StrEnum):
     on_site = "on_site"
     hybrid = "hybrid"
     remote = "remote"
     unknown = "unknown"
 
 
-class Seniority(str, Enum):
+class Seniority(StrEnum):
     intern = "intern"
     entry = "entry"
     junior = "junior"
@@ -26,8 +27,8 @@ class Seniority(str, Enum):
 
 class Job(BaseModel):
     # Identity
-    source: str            # "remotive", "adzuna", "file"
-    source_job_id: str      # id as given by that source
+    source: str  # "remotive", "adzuna", "file"
+    source_job_id: str  # id as given by that source
     url: HttpUrl
 
     # Core content

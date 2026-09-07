@@ -3,13 +3,15 @@ a file you hand-edit. Loaded from real environment variables and, for local
 dev, a `.env` file. pydantic-settings does both automatically and validates
 the types (e.g. rejects a non-numeric log level if we typed one)."""
 
+from __future__ import annotations
+
 from functools import lru_cache
 from pathlib import Path
 
-
+import yaml
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-
+from jobagent.models.profile import Profile
 
 
 class Settings(BaseSettings):
@@ -27,7 +29,6 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     """Load settings once per process and cache them."""
     return Settings()
-
 
 
 def load_profile(path: Path) -> Profile:

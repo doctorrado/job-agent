@@ -3,6 +3,7 @@
 Kept separate from Settings (config.py): this is data about you and your job
 search, not secrets, and it's fine for it to live in a plain YAML file you
 hand-edit."""
+
 from __future__ import annotations
 
 from pydantic import BaseModel, Field
