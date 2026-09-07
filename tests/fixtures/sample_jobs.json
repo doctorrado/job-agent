@@ -1,0 +1,24 @@
+[
+  {
+    "source": "file",
+    "source_job_id": "1",
+    "url": "https://example.com/jobs/1",
+    "title": "Data Analyst",
+    "company": "Acme Manufacturing",
+    "location": "Medellín, Colombia",
+    "remote_type": "hybrid",
+    "description": "SQL, Power BI, manufacturing reporting.",
+    "seniority": "junior"
+  },
+  {
+    "source": "file",
+    "source_job_id": "2",
+    "url": "https://example.com/jobs/2",
+    "title": "Junior Data Engineer",
+    "company": "Northwind Analytics",
+    "location": "Remote - LATAM",
+    "remote_type": "remote",
+    "description": "Python, Airflow, ETL pipelines.",
+    "seniority": "entry"
+  }
+]
