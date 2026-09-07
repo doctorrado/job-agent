@@ -38,3 +38,24 @@ significant work — don't let reasoning live only in chat.
   deprioritized — likely lower-paying local roles vs. target multinationals).
 - Next: dedupe + SQLite/SQLAlchemy storage to actually close out Phase 2,
   then a `jobagent fetch` command that runs all sources together.
+
+## 2026-09-07 (Phase 2 closed out)
+
+- Built pipeline/dedupe.py (exact source-key + normalized company/title/
+  location cross-source match — no fuzzy/embeddings). Deliberately only
+  dedupes within one fetch run; a posting reappearing under a different
+  source next week isn't caught by this alone.
+- Built storage/ (SQLAlchemy ORM `JobRecord` on SQLite at data/jobs.db,
+  `JobRepository.upsert` is the dedup-safe write — unique on
+  source+source_job_id).
+- Built pipeline/fetch.py + `jobagent fetch` CLI command: runs every active
+  source, dedupes, stores, reports stats. Skips a failing source instead of
+  aborting the whole run.
+- First real run: 241 fetched (17 Remotive + 224 CompanyBoards) → 240 after
+  dedupe → 240 new → 240 stored.
+- **Phase 2 is complete.** Remaining source backlog (JobicySource,
+  AdzunaSource, Jooble, Colombia SPE, EmailAlertSource) is optional/ongoing,
+  not blocking — can be added any time via the existing JobSource interface.
+- Next: Phase 3 — analysis & scoring (transparent match-score breakdown,
+  seniority/location/work-auth detection, salary-tier and multinational-
+  preference signal per the user's stated priorities).
