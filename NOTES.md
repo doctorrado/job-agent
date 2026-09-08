@@ -137,4 +137,21 @@ significant work — don't let reasoning live only in chat.
 - Remaining: Adzuna (needs the user's own API keys) and Jooble (needs the
   user's own API key, 500-lifetime-call budget) — both require the user to
   sign up themselves, walked through interactively rather than automated.
+- Built AdzunaSource (US market, "data analyst remote" query). Only trusts
+  salary_min when salary_is_predicted=="0" (Adzuna's real-vs-estimated
+  flag) — never treats Adzuna's own algorithmic guess as a real disclosed
+  figure. Real run: +50 new jobs.
+- **Known accepted limitation**: Adzuna's search API truncates descriptions
+  to ~500 chars, cutting off before the work-authorization disclaimer that
+  usually sits near the end of a full posting. Result: 0/50 Adzuna jobs
+  were caught by the US-work-auth filter on the first real run, which is
+  a false negative, not evidence the filter works there — no fix without
+  either a paid Adzuna tier or re-scraping full pages (which we're
+  deliberately not doing). Treat Adzuna results with extra manual judgment
+  on work authorization specifically.
+- Verified real Greenhouse exclusions are legitimate, not a bug: 96/105
+  total exclusions come from just Inovalon (73) and YipitData (23) —
+  both apparently put a standard work-authorization disclaimer on nearly
+  every posting, so their boards are broadly not viable for this user,
+  not a per-role issue.
 
