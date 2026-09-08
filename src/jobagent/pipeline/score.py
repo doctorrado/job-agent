@@ -60,7 +60,9 @@ def score_job(job: Job, profile: Profile) -> ScoreResult:
     hourly_usd = salary_hourly_usd(job)
     hourly_floor = profile.salary.minimum_hourly_usd
     if hourly_usd is not None and hourly_floor is not None and hourly_usd < hourly_floor:
-        reason = f"disclosed rate (~${hourly_usd:.2f}/hr) is below your ${hourly_floor:.0f}/hr floor"
+        reason = (
+            f"disclosed rate (~${hourly_usd:.2f}/hr) is below your ${hourly_floor:.0f}/hr floor"
+        )
         return ScoreResult(job=job, eligible=False, ineligible_reason=reason)
 
     skills = matched_skills(job, profile)
