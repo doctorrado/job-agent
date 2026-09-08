@@ -109,3 +109,21 @@ def test_salary_monthly_cop_ignores_per_word_freelance_rate():
     job = _job(description="Initial compensation is up to $0.06 per word.")
     assert salary_monthly_cop(job) is None
 
+def test_salary_hourly_usd_parses_explicit_hourly_rate():
+    job = _job(description="This role pays $22/hr for the right candidate.")
+    assert salary_hourly_usd(job) == 22.0
+
+
+def test_salary_hourly_usd_converts_explicit_annual_figure():
+    job = _job(description="Compensation is $41,600 annually for this position.")
+    assert salary_hourly_usd(job) == 20.0
+
+
+def test_salary_hourly_usd_ignores_per_word_piecework():
+    job = _job(description="Initial compensation is up to $0.06 per word.")
+    assert salary_hourly_usd(job) is None
+
+
+def test_salary_hourly_usd_none_without_explicit_period():
+    job = _job(description="The compensation range for the role is $2,500 - $4,500 USD GROSS.")
+    assert salary_hourly_usd(job) is None

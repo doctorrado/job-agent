@@ -27,6 +27,8 @@ class SalaryExpectation(BaseModel):
     currency: str = "COP"
     target_monthly: int | None = None
     minimum_monthly: int | None = None
+    minimum_hourly_usd: float | None = None
+
 
 
 class Profile(BaseModel):

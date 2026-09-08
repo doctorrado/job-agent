@@ -1,7 +1,7 @@
 """Deterministic extraction: pull structured signals out of a Job's raw
 text (title, description, location) — skills mentioned, seniority level,
 years of experience required, remote/location scope, US work-authorization
-requirements, and (best-effort) a monthly COP salary figure.
+requirements, and (best-effort) salary figures in COP or USD.
 
 Computed fresh every time `jobagent rank` runs, not stored — it's cheap,
 pure text analysis with nothing worth caching.
@@ -49,6 +49,18 @@ _LATAM_WORDS = re.compile(r"\b(latam|latin america)\b", re.I)
 # all use "$"), and guessing the currency wrong is worse than not parsing at
 # all. See NOTES.md (2026-09-08) for the real false positives this replaced.
 _SALARY_COP_PATTERN = re.compile(r"cop\s*\$?\s*([\d.,]{4,})", re.I)
+
+# USD: only an explicit hourly or explicit annual figure — never guessed from
+# a bare "$" range with no period keyword, and never converted from a
+# per-word/per-task/per-image piecework rate (depends on how fast someone
+# works, not something to estimate).
+_SALARY_USD_HOURLY_PATTERN = re.compile(
+    r"\$\s*(\d{1,3}(?:\.\d{1,2})?)\s*(?:usd)?\s*(?:/\s*hr\b|/\s*hour\b|per hour|hourly)", re.I
+)
+_SALARY_USD_ANNUAL_PATTERN = re.compile(
+    r"\$\s*([\d,]{4,})\s*(?:usd)?\s*(?:annually|per year|/\s*yr\b|/\s*year\b)", re.I
+)
+_FULL_TIME_HOURS_PER_YEAR = 2080  # 40 hr/week x 52 weeks, for annual -> hourly comparison
 
 
 def matched_skills(job: Job, profile: Profile) -> list[str]:
@@ -105,3 +117,19 @@ def salary_monthly_cop(job: Job) -> int | None:
         return None
     digits = re.sub(r"[.,]", "", match.group(1))
     return int(digits) if digits.isdigit() else None
+
+
+def salary_hourly_usd(job: Job) -> float | None:
+    """Best-effort hourly USD rate — from an explicit hourly rate, or an
+    explicit annual figure converted at a standard 2,080 hr/year. Ignores
+    per-word/per-task/per-image piecework rates on purpose: converting
+    those to an hourly equivalent depends on how fast someone works."""
+    text = f"{job.salary_raw or ''} {job.description}"
+    hourly_match = _SALARY_USD_HOURLY_PATTERN.search(text)
+    if hourly_match:
+        return float(hourly_match.group(1))
+    annual_match = _SALARY_USD_ANNUAL_PATTERN.search(text)
+    if annual_match:
+        annual = float(re.sub(",", "", annual_match.group(1)))
+        return annual / _FULL_TIME_HOURS_PER_YEAR
+    return None

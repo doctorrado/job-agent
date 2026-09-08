@@ -78,3 +78,11 @@ def test_senior_title_is_heavily_penalized_not_excluded():
     result = score_job(job, _profile())
     assert result.eligible is True
     assert result.breakdown["seniority"] == 5
+
+def test_below_hourly_usd_floor_is_hard_excluded():
+    job = _job(description="This contract role pays $8/hr.")
+    profile = _profile()
+    profile.salary.minimum_hourly_usd = 15
+    result = score_job(job, profile)
+    assert result.eligible is False
+    assert "hr floor" in result.ineligible_reason

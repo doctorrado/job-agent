@@ -1,11 +1,12 @@
 """Deterministic match scoring: combine extraction signals with the
 candidate's Profile into a transparent 0-100 breakdown.
 
-Two hard filters run first and exclude a job outright — not score
-categories, the non-negotiables from CLAUDE.md:
+Hard filters run first and exclude a job outright — not score categories,
+the non-negotiables from CLAUDE.md:
   - a detected US work-authorization requirement, when the candidate
     isn't US-authorized
-  - a salary that's clearly disclosed and below the candidate's floor
+  - a salary that's clearly disclosed (COP or USD) and below the
+    candidate's floor for that currency
 
 Everything else is soft-scored. Industry and a required-vs-preferred
 skill split are deliberately left out — see NOTES.md (2026-09-08) for why.
@@ -22,6 +23,7 @@ from jobagent.pipeline.extract import (
     matched_skills,
     remote_scope,
     requires_us_work_authorization,
+    salary_hourly_usd,
     salary_monthly_cop,
     years_required,
 )
@@ -40,6 +42,7 @@ class ScoreResult:
     breakdown: dict[str, int] = field(default_factory=dict)
     matched_skills: list[str] = field(default_factory=list)
     salary_monthly_cop: int | None = None
+    salary_hourly_usd: float | None = None
 
 
 def score_job(job: Job, profile: Profile) -> ScoreResult:
@@ -48,10 +51,16 @@ def score_job(job: Job, profile: Profile) -> ScoreResult:
             job=job, eligible=False, ineligible_reason="requires US work authorization"
         )
 
-    salary = salary_monthly_cop(job)
-    floor = profile.salary.minimum_monthly
-    if salary is not None and floor is not None and salary < floor:
-        reason = f"disclosed salary ({salary:,} COP/mo) is below your floor ({floor:,})"
+    salary_cop = salary_monthly_cop(job)
+    cop_floor = profile.salary.minimum_monthly
+    if salary_cop is not None and cop_floor is not None and salary_cop < cop_floor:
+        reason = f"disclosed salary ({salary_cop:,} COP/mo) is below your floor ({cop_floor:,})"
+        return ScoreResult(job=job, eligible=False, ineligible_reason=reason)
+
+    hourly_usd = salary_hourly_usd(job)
+    hourly_floor = profile.salary.minimum_hourly_usd
+    if hourly_usd is not None and hourly_floor is not None and hourly_usd < hourly_floor:
+        reason = f"disclosed rate (~${hourly_usd:.2f}/hr) is below your ${hourly_floor:.0f}/hr floor"
         return ScoreResult(job=job, eligible=False, ineligible_reason=reason)
 
     skills = matched_skills(job, profile)
@@ -61,7 +70,7 @@ def score_job(job: Job, profile: Profile) -> ScoreResult:
         "skills": skill_points,
         "seniority": _score_seniority(job, profile),
         "location": _score_location(job, profile),
-        "salary": _score_salary(salary, profile),
+        "salary": _score_salary(salary_cop, hourly_usd, profile),
     }
     return ScoreResult(
         job=job,
@@ -69,7 +78,8 @@ def score_job(job: Job, profile: Profile) -> ScoreResult:
         total=sum(breakdown.values()),
         breakdown=breakdown,
         matched_skills=skills,
-        salary_monthly_cop=salary,
+        salary_monthly_cop=salary_cop,
+        salary_hourly_usd=hourly_usd,
     )
 
 
@@ -92,10 +102,10 @@ def _score_location(job: Job, profile: Profile) -> int:
     return 5
 
 
-def _score_salary(salary: int | None, profile: Profile) -> int:
-    if salary is None:
+def _score_salary(salary_cop: int | None, hourly_usd: float | None, profile: Profile) -> int:
+    if salary_cop is None and hourly_usd is None:
         return 8  # undisclosed — neutral, never assumed to meet or miss target
-    target = profile.salary.target_monthly
-    if target and salary >= target:
-        return 15
-    return 12  # meets the floor (already checked above) but under target
+    if salary_cop is not None:
+        target = profile.salary.target_monthly
+        return 15 if target and salary_cop >= target else 12
+    return 13  # cleared the USD hourly floor above; no separate target to aim for yet
