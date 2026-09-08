@@ -22,7 +22,6 @@ from jobagent.sources.jobicy_source import JobicySource
 from jobagent.sources.remotive_source import RemotiveSource
 from jobagent.storage.repository import JobRepository
 
-
 log = get_logger(__name__)
 
 MANUAL_JOBS_PATH = Path("data/manual_jobs.json")
