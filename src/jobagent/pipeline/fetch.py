@@ -21,6 +21,8 @@ from jobagent.sources.file_source import FileSource
 from jobagent.sources.jobicy_source import JobicySource
 from jobagent.sources.remotive_source import RemotiveSource
 from jobagent.storage.repository import JobRepository
+from jobagent.config import get_settings
+from jobagent.sources.adzuna_source import AdzunaSource
 
 log = get_logger(__name__)
 
@@ -34,8 +36,10 @@ def active_sources() -> list[JobSource]:
         sources.append(CompanyBoardsSource(COMPANIES_PATH))
     if MANUAL_JOBS_PATH.exists():
         sources.append(FileSource(MANUAL_JOBS_PATH))
+    settings = get_settings()
+    if settings.adzuna_app_id and settings.adzuna_app_key:
+        sources.append(AdzunaSource(settings.adzuna_app_id, settings.adzuna_app_key))
     return sources
-
 
 
 def fetch_all(sources: list[JobSource]) -> list[Job]:
