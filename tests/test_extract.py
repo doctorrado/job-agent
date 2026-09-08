@@ -76,3 +76,36 @@ def test_salary_monthly_cop_parses_disclosed_amount():
 
 def test_salary_monthly_cop_none_when_undisclosed():
     assert salary_monthly_cop(_job()) is None
+
+def test_requires_us_work_authorization_detects_residency_requirement():
+    job = _job(
+        description="Must have resided in the United States for the past three consecutive years."
+    )
+    assert requires_us_work_authorization(job) is True
+
+
+def test_requires_us_work_authorization_detects_remote_within_us():
+    job = _job(description="This role is fully remote within the United States.")
+    assert requires_us_work_authorization(job) is True
+
+
+def test_requires_us_work_authorization_ignores_generic_company_description():
+    job = _job(
+        description=(
+            "Sezzle is a financial technology company operating in the "
+            "United States and Canada."
+        )
+    )
+    assert requires_us_work_authorization(job) is False
+
+
+
+def test_salary_monthly_cop_ignores_usd_amounts():
+    job = _job(description="The compensation range for the role is $2,500 - $4,500 USD GROSS.")
+    assert salary_monthly_cop(job) is None
+
+
+def test_salary_monthly_cop_ignores_per_word_freelance_rate():
+    job = _job(description="Initial compensation is up to $0.06 per word.")
+    assert salary_monthly_cop(job) is None
+
