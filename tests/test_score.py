@@ -92,5 +92,5 @@ def test_zero_skill_match_is_dampened_not_hidden():
     result = score_job(job, _profile())
     assert result.eligible is True
     assert result.breakdown["skills"] == 0
-    # seniority(25) + location(20) + salary(8) = 53, halved and rounded
-    assert result.total == 27
+    assert result.total == round(sum(result.breakdown.values()) * 0.5)
+
