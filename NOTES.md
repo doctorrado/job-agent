@@ -87,3 +87,27 @@ significant work — don't let reasoning live only in chat.
   can't justify). Combines with future Phase 5/6 (application tracking +
   hiring-manager research) into one interface. Real scope, its own future
   design pass.
+
+  ## 2026-09-08 (Phase 3 closed out)
+
+- Real-data debugging (not caught by synthetic unit tests) found and fixed:
+  salary regex was treating any "$" amount as monthly COP (fixed: COP
+  requires an explicit "COP" mention); work-authorization regex missed
+  real disqualifying phrases like "must have resided in the United States"
+  and "fully remote within the United States" (added, while avoiding
+  false positives on generic company-description sentences).
+- Added a USD hourly/annual salary floor ($15/hr) alongside the COP
+  monthly floor — converts an explicit annual figure at 2,080 hr/year,
+  deliberately does NOT convert per-word/per-task/per-image piecework
+  rates (depends on how fast someone works).
+- Found: ~73/238 eligible jobs (mostly Remotive noise — Sales Jedi, Head of
+  Marketing, Freelance Writer/Copywriter) had zero skill-keyword overlap
+  but still scored 40-55/100 from neutral defaults alone. Fixed: total
+  score is halved (not hard-excluded — keyword matching can miss real
+  fits, see the UL Solutions case) when zero skills matched.
+- **Phase 3 (analysis & scoring) is complete**: extraction, hard filters,
+  transparent rubric, and zero-skill dampening are all real, tested, and
+  verified against actual live data, not just synthetic examples.
+- Next: Phase 4 (resume intelligence), or round out Phase 2's optional
+  source backlog (Jobicy, Adzuna, more companies via a discovery pass).
+

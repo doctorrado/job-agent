@@ -55,12 +55,14 @@ def rank() -> None:
     for r in eligible[:20]:
         matched = ",".join(r.matched_skills) or "none"
         b = r.breakdown
+        note = "  (dampened — no skill overlap)" if not r.matched_skills else ""
         typer.echo(
-            f"{r.total:3d}  {r.job.company} — {r.job.title}\n"
+            f"{r.total:3d}  {r.job.company} — {r.job.title}{note}\n"
             f"      skills={b['skills']} seniority={b['seniority']} "
             f"location={b['location']} salary={b['salary']}  matched={matched}\n"
             f"      {r.job.url}"
         )
+
 
 
 @app.command()

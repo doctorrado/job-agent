@@ -74,10 +74,20 @@ def score_job(job: Job, profile: Profile) -> ScoreResult:
         "location": _score_location(job, profile),
         "salary": _score_salary(salary_cop, hourly_usd, profile),
     }
+    # Zero skill overlap means the other categories' "neutral" defaults
+    # (unknown seniority, undisclosed salary, etc.) can otherwise add up to
+    # a misleadingly middling score for jobs unrelated to your skillset
+    # (real example: "Sales Jedi" scored 53/100 on defaults alone). Halve
+    # the total in that case — not a hard exclude, since keyword matching
+    # can miss genuinely relevant roles (see the UL Solutions case in
+    # NOTES.md) — just a lower-confidence rank.
+    dampening = 1.0 if skills else 0.5
+    total = round(sum(breakdown.values()) * dampening)
+
     return ScoreResult(
         job=job,
         eligible=True,
-        total=sum(breakdown.values()),
+        total=total,
         breakdown=breakdown,
         matched_skills=skills,
         salary_monthly_cop=salary_cop,

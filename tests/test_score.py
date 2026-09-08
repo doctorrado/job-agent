@@ -86,3 +86,11 @@ def test_below_hourly_usd_floor_is_hard_excluded():
     result = score_job(job, profile)
     assert result.eligible is False
     assert "hr floor" in result.ineligible_reason
+
+def test_zero_skill_match_is_dampened_not_hidden():
+    job = _job(title="Sales Jedi", description="Sell things to people.")
+    result = score_job(job, _profile())
+    assert result.eligible is True
+    assert result.breakdown["skills"] == 0
+    # seniority(25) + location(20) + salary(8) = 53, halved and rounded
+    assert result.total == 27
