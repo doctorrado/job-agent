@@ -20,6 +20,8 @@ from jobagent.sources.company_boards_source import CompanyBoardsSource
 from jobagent.sources.file_source import FileSource
 from jobagent.sources.remotive_source import RemotiveSource
 from jobagent.storage.repository import JobRepository
+from jobagent.sources.jobicy_source import JobicySource
+
 
 log = get_logger(__name__)
 
@@ -28,12 +30,13 @@ COMPANIES_PATH = Path("config/companies.yaml")
 
 
 def active_sources() -> list[JobSource]:
-    sources: list[JobSource] = [RemotiveSource()]
+    sources: list[JobSource] = [RemotiveSource(), JobicySource()]
     if COMPANIES_PATH.exists():
         sources.append(CompanyBoardsSource(COMPANIES_PATH))
     if MANUAL_JOBS_PATH.exists():
         sources.append(FileSource(MANUAL_JOBS_PATH))
     return sources
+
 
 
 def fetch_all(sources: list[JobSource]) -> list[Job]:

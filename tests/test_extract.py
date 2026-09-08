@@ -129,3 +129,7 @@ def test_salary_hourly_usd_ignores_per_word_piecework():
 def test_salary_hourly_usd_none_without_explicit_period():
     job = _job(description="The compensation range for the role is $2,500 - $4,500 USD GROSS.")
     assert salary_hourly_usd(job) is None
+
+def test_requires_us_work_authorization_detects_remotely_within_us():
+    job = _job(description="This role may be performed fully remotely within the United States.")
+    assert requires_us_work_authorization(job) is True
