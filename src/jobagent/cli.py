@@ -9,10 +9,9 @@ from jobagent.config import get_settings, load_profile
 from jobagent.logging import configure_logging, get_logger
 from jobagent.pipeline.fetch import run_fetch
 from jobagent.pipeline.score import score_job
+from jobagent.sources.jooble_source import LIFETIME_LIMIT, JoobleSource, read_usage
 from jobagent.storage.db import make_session_factory
 from jobagent.storage.repository import JobRepository
-from jobagent.sources.jooble_source import JoobleSource, read_usage, LIFETIME_LIMIT
-
 
 app = typer.Typer(help="AI-powered job search and application assistant.")
 log = get_logger(__name__)
@@ -66,7 +65,6 @@ def rank() -> None:
         )
 
 
-
 @app.command()
 def fetch() -> None:
     """Fetch jobs from every active source, dedupe, and store them."""
@@ -80,6 +78,7 @@ def fetch() -> None:
         f"{stats['already_seen']} already in the database. "
         f"Total jobs stored: {repository.count()}."
     )
+
 
 @app.command("jooble-search")
 def jooble_search(

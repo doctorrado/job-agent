@@ -3,7 +3,9 @@ results, and persisting them.
 
 "Active" sources are whichever ones have what they need available:
 CompanyBoardsSource runs if config/companies.yaml exists, FileSource runs
-if data/manual_jobs.json exists, RemotiveSource always runs (needs nothing).
+if data/manual_jobs.json exists, AdzunaSource runs if Adzuna credentials
+are set, RemotiveSource and JobicySource always run (need nothing).
+JoobleSource is deliberately NOT included here — see sources/jooble_source.py.
 A source that fails (e.g. network error) is logged and skipped rather than
 aborting the whole run — one flaky source shouldn't block the others.
 """
@@ -23,7 +25,6 @@ from jobagent.sources.file_source import FileSource
 from jobagent.sources.jobicy_source import JobicySource
 from jobagent.sources.remotive_source import RemotiveSource
 from jobagent.storage.repository import JobRepository
-
 
 log = get_logger(__name__)
 
