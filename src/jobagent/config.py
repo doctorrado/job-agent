@@ -24,6 +24,8 @@ class Settings(BaseSettings):
     anthropic_api_key: str | None = None
     adzuna_app_id: str | None = None
     adzuna_app_key: str | None = None
+    jooble_api_key: str | None = None
+
 
 
 @lru_cache

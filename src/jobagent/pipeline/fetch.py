@@ -12,17 +12,18 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from jobagent.config import get_settings
 from jobagent.logging import get_logger
 from jobagent.models.job import Job
 from jobagent.pipeline.dedupe import deduplicate
+from jobagent.sources.adzuna_source import AdzunaSource
 from jobagent.sources.base import JobSource
 from jobagent.sources.company_boards_source import CompanyBoardsSource
 from jobagent.sources.file_source import FileSource
 from jobagent.sources.jobicy_source import JobicySource
 from jobagent.sources.remotive_source import RemotiveSource
 from jobagent.storage.repository import JobRepository
-from jobagent.config import get_settings
-from jobagent.sources.adzuna_source import AdzunaSource
+
 
 log = get_logger(__name__)
 

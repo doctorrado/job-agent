@@ -11,6 +11,8 @@ from jobagent.pipeline.fetch import run_fetch
 from jobagent.pipeline.score import score_job
 from jobagent.storage.db import make_session_factory
 from jobagent.storage.repository import JobRepository
+from jobagent.sources.jooble_source import JoobleSource, read_usage, LIFETIME_LIMIT
+
 
 app = typer.Typer(help="AI-powered job search and application assistant.")
 log = get_logger(__name__)
@@ -78,3 +80,25 @@ def fetch() -> None:
         f"{stats['already_seen']} already in the database. "
         f"Total jobs stored: {repository.count()}."
     )
+
+@app.command("jooble-search")
+def jooble_search(
+    keywords: str = typer.Option("data analyst", help="Search keywords"),
+    location: str = typer.Option("Colombia", help="Search location"),
+) -> None:
+    """Run one deliberate Jooble search — counts against the 500-call
+    lifetime budget, so this is never part of the routine `fetch`."""
+    settings = get_settings()
+    if not settings.jooble_api_key:
+        typer.echo("No JOOBLE_API_KEY set in .env — get one at co.jooble.org/api/about")
+        raise typer.Exit(1)
+
+    used = read_usage()
+    typer.echo(f"Jooble calls used so far: {used}/{LIFETIME_LIMIT}")
+    if not typer.confirm("Use one more call now?"):
+        raise typer.Exit(0)
+
+    repository = JobRepository(make_session_factory(settings.db_path)())
+    jobs = JoobleSource(settings.jooble_api_key, keywords=keywords, location=location).fetch()
+    new_count = sum(1 for job in jobs if repository.upsert(job))
+    typer.echo(f"Fetched {len(jobs)} jobs, {new_count} new. Total stored: {repository.count()}.")
