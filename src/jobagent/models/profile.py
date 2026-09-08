@@ -25,10 +25,10 @@ class LocationPreferences(BaseModel):
     remote_scopes_ok: list[str] = Field(default_factory=list)
 
 
-class SalaryExpectation(BaseModel):
-    currency: str = "COP"
-    target_annual: int | None = None
-    minimum_annual: int | None = None
+salary:
+  currency: COP
+  target_monthly: 5000000
+  minimum_monthly: 4000000
 
 
 class Profile(BaseModel):

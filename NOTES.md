@@ -59,3 +59,31 @@ significant work — don't let reasoning live only in chat.
 - Next: Phase 3 — analysis & scoring (transparent match-score breakdown,
   seniority/location/work-auth detection, salary-tier and multinational-
   preference signal per the user's stated priorities).
+
+
+## 2026-09-08
+
+- Started Phase 3 (analysis & scoring). Extraction and scoring are both
+  pure functions computed at `rank` time — no new DB columns, nothing
+  cached, since it's cheap regex over already-stored text.
+- Hard filters (exclude entirely, not scored): detected US work-auth
+  requirement when not US-authorized; a disclosed salary below the
+  monthly COP floor. Undisclosed salary is neutral, never assumed either way.
+- Seniority is a distance-based penalty (years required vs. actual
+  experience), not a hard exclude — title labels like "senior" are too
+  noisy to safely hide a posting outright.
+- Rubric (100 pts): skills 40, seniority 25, location 20, salary 15.
+  Industry and a required-vs-preferred skill split are deliberately not
+  scored — no reliable signal for either with today's data.
+- Real test case that will score LOW under this rubric despite being a
+  plausible fit (UL Solutions inspector role — zero skill-keyword overlap,
+  transferable manufacturing experience a regex can't see): confirms the
+  known limitation of pure keyword matching.
+- Future idea (not yet built, deliberately deferred): a "review ambiguous
+  fits with Claude" feature, as its own separate dashboard interface
+  (published Artifact, `db` capability to sync jobs, `sample` capability
+  for an embedded chat) — NOT inside this coding session, and NOT a
+  standalone Anthropic API integration (real per-token cost the user
+  can't justify). Combines with future Phase 5/6 (application tracking +
+  hiring-manager research) into one interface. Real scope, its own future
+  design pass.

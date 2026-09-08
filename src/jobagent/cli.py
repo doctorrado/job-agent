@@ -10,6 +10,10 @@ from jobagent.logging import configure_logging, get_logger
 from jobagent.pipeline.fetch import run_fetch
 from jobagent.storage.db import make_session_factory
 from jobagent.storage.repository import JobRepository
+from jobagent.pipeline.score import score_job
+from jobagent.storage.db import make_session_factory
+from jobagent.storage.repository import JobRepository
+
 
 app = typer.Typer(help="AI-powered job search and application assistant.")
 log = get_logger(__name__)
@@ -37,6 +41,28 @@ def check_profile() -> None:
         f"OK: {profile.name} — {len(profile.target_roles)} target roles, "
         f"{len(profile.skills)} skills."
     )
+
+
+@app.command()
+def rank() -> None:
+    """Score every stored job against your profile and print a ranked report."""
+    settings = get_settings()
+    profile = load_profile(settings.profile_path)
+    repository = JobRepository(make_session_factory(settings.db_path)())
+
+    results = [score_job(job, profile) for job in repository.all()]
+    eligible = sorted((r for r in results if r.eligible), key=lambda r: r.total, reverse=True)
+    ineligible = [r for r in results if not r.eligible]
+
+    typer.echo(f"{len(eligible)} eligible, {len(ineligible)} filtered out\n")
+    for r in eligible[:20]:
+        matched = ",".join(r.matched_skills) or "none"
+        typer.echo(
+            f"{r.total:3d}  {r.job.company} — {r.job.title}\n"
+            f"      skills={r.breakdown['skills']} seniority={r.breakdown['seniority']} "
+            f"location={r.breakdown['location']} salary={r.breakdown['salary']}  matched={matched}\n"
+            f"      {r.job.url}"
+        )
 
 
 @app.command()
