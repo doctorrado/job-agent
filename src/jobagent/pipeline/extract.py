@@ -34,7 +34,7 @@ _US_AUTH_PATTERN = re.compile(
     r"legally authorized to work in the united states|"
     r"work authorization in the (united states|u\.?s\.?)\b|"
     r"must (?:have )?resid(?:e|ed) (?:in|within) the united states|"
-    r"(?:fully )?remotely? within the united states)",
+    r"(?:fully )?remote(?:ly)? within the united states)",
     re.I,
 )
 
