@@ -44,16 +44,15 @@ class ScoreResult:
 
 def score_job(job: Job, profile: Profile) -> ScoreResult:
     if requires_us_work_authorization(job) and not profile.work_authorization.us_authorized:
-        return ScoreResult(job=job, eligible=False, ineligible_reason="requires US work authorization")
+        return ScoreResult(
+            job=job, eligible=False, ineligible_reason="requires US work authorization"
+        )
 
     salary = salary_monthly_cop(job)
     floor = profile.salary.minimum_monthly
     if salary is not None and floor is not None and salary < floor:
-        return ScoreResult(
-            job=job,
-            eligible=False,
-            ineligible_reason=f"disclosed salary ({salary:,} COP/mo) is below your floor ({floor:,})",
-        )
+        reason = f"disclosed salary ({salary:,} COP/mo) is below your floor ({floor:,})"
+        return ScoreResult(job=job, eligible=False, ineligible_reason=reason)
 
     skills = matched_skills(job, profile)
     skill_points = round(min(len(skills), _SKILL_MATCH_CAP) / _SKILL_MATCH_CAP * 40)

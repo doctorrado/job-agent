@@ -3,17 +3,15 @@
 Kept separate from Settings (config.py): this is data about you and your job
 search, not secrets, and it's fine for it to live in a plain YAML file you
 hand-edit."""
-
 from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
 
 class WorkAuthorization(BaseModel):
-    # Countries/regions you can legally work in with no visa or sponsorship
-    authorized_countries: list[str] = Field(default_factory=lambda: ["Colombia"])
-    # Whether to even surface roles elsewhere that would require sponsorship
-    open_to_sponsorship: bool = False
+    us_authorized: bool = False
+    eu_authorized: bool = False
+    needs_sponsorship: bool = True
 
 
 class LocationPreferences(BaseModel):
@@ -25,10 +23,10 @@ class LocationPreferences(BaseModel):
     remote_scopes_ok: list[str] = Field(default_factory=list)
 
 
-salary:
-  currency: COP
-  target_monthly: 5000000
-  minimum_monthly: 4000000
+class SalaryExpectation(BaseModel):
+    currency: str = "COP"
+    target_monthly: int | None = None
+    minimum_monthly: int | None = None
 
 
 class Profile(BaseModel):

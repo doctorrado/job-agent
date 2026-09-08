@@ -8,12 +8,9 @@ from jobagent import __version__
 from jobagent.config import get_settings, load_profile
 from jobagent.logging import configure_logging, get_logger
 from jobagent.pipeline.fetch import run_fetch
-from jobagent.storage.db import make_session_factory
-from jobagent.storage.repository import JobRepository
 from jobagent.pipeline.score import score_job
 from jobagent.storage.db import make_session_factory
 from jobagent.storage.repository import JobRepository
-
 
 app = typer.Typer(help="AI-powered job search and application assistant.")
 log = get_logger(__name__)
@@ -57,10 +54,11 @@ def rank() -> None:
     typer.echo(f"{len(eligible)} eligible, {len(ineligible)} filtered out\n")
     for r in eligible[:20]:
         matched = ",".join(r.matched_skills) or "none"
+        b = r.breakdown
         typer.echo(
             f"{r.total:3d}  {r.job.company} — {r.job.title}\n"
-            f"      skills={r.breakdown['skills']} seniority={r.breakdown['seniority']} "
-            f"location={r.breakdown['location']} salary={r.breakdown['salary']}  matched={matched}\n"
+            f"      skills={b['skills']} seniority={b['seniority']} "
+            f"location={b['location']} salary={b['salary']}  matched={matched}\n"
             f"      {r.job.url}"
         )
 

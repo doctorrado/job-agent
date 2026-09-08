@@ -1,5 +1,10 @@
 from jobagent.models.job import Job
-from jobagent.models.profile import LocationPreferences, Profile, SalaryExpectation, WorkAuthorization
+from jobagent.models.profile import (
+    LocationPreferences,
+    Profile,
+    SalaryExpectation,
+    WorkAuthorization,
+)
 from jobagent.pipeline.score import score_job
 
 
@@ -61,9 +66,11 @@ def test_undisclosed_salary_is_not_excluded_and_scored_neutral():
 
 
 def test_full_skill_match_maxes_skill_category():
-    job = _job(description="Python, SQL, Power BI required daily.")
-    result = score_job(job, _profile())
+    profile = _profile(skills=["Python", "SQL", "Power BI", "Excel", "Docker", "GCP"])
+    job = _job(description="Python, SQL, Power BI, Excel, Docker, GCP required daily.")
+    result = score_job(job, profile)
     assert result.breakdown["skills"] == 40
+
 
 
 def test_senior_title_is_heavily_penalized_not_excluded():

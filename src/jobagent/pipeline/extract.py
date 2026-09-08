@@ -18,7 +18,9 @@ from jobagent.models.job import Job, Seniority
 from jobagent.models.profile import Profile
 
 _SENIOR_WORDS = re.compile(r"\b(senior|sr\.?|lead|principal|staff|director|head of)\b", re.I)
-_JUNIOR_WORDS = re.compile(r"\b(junior|jr\.?|entry[- ]level|graduate|intern(ship)?|associate)\b", re.I)
+_JUNIOR_WORDS = re.compile(
+    r"\b(junior|jr\.?|entry[- ]level|graduate|intern(ship)?|associate)\b", re.I
+)
 _YEARS_PATTERN = re.compile(r"(\d+)\s*(?:\+|-\s*\d+)?\s*years?", re.I)
 
 _US_AUTH_PATTERN = re.compile(
