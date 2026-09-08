@@ -111,3 +111,30 @@ significant work — don't let reasoning live only in chat.
 - Next: Phase 4 (resume intelligence), or round out Phase 2's optional
   source backlog (Jobicy, Adzuna, more companies via a discovery pass).
 
+## 2026-09-08 (rounding out Phase 2)
+
+- Built JobicySource (real filters, structured salaryMin/Max/Currency/Period
+  and pubDate — no regex-guessing needed for this one). Also fixed a real
+  regression while adding it: "remotely? within the US" only matched the
+  literal substring "remotel" + optional "y" (regex mistake), which broke
+  detection of "remote within the US" (no -ly) that was previously working.
+  Fixed to `remote(?:ly)?` — both forms now correctly detected.
+- Ran a company-discovery pass (WebSearch for site:boards.greenhouse.io /
+  site:jobs.lever.co + role keywords, each slug verified live before
+  adding): grew config/companies.yaml from 2 to 21 companies. Real result:
+  291 -> 1,941 total jobs stored on the next fetch.
+- Found and deliberately excluded "Jobgether" (Lever slug, 4,543 "jobs"):
+  it's a recruiting/matching aggregator posting many *other* real
+  companies' jobs through one Lever board, not a single employer.
+  CompanyBoardsSource assumes one board = one real employer, so including
+  it would mislabel every posting's company field. Real limitation to fix
+  later if aggregator boards are ever worth supporting properly.
+- Investigated Colombia's SPE job portal for a public API a second time:
+  confirmed none exists — only a login-gated citizen portal and a separate
+  employer-registration portal, no developer API. Their own site has a
+  broken SSL cert. Closing this out: no automated path; FileSource by hand
+  is the only option if ever wanted, same as the LinkedIn approach.
+- Remaining: Adzuna (needs the user's own API keys) and Jooble (needs the
+  user's own API key, 500-lifetime-call budget) — both require the user to
+  sign up themselves, walked through interactively rather than automated.
+
