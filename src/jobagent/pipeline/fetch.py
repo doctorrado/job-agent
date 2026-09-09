@@ -23,6 +23,7 @@ from jobagent.sources.base import JobSource
 from jobagent.sources.company_boards_source import CompanyBoardsSource
 from jobagent.sources.file_source import FileSource
 from jobagent.sources.jobicy_source import JobicySource
+from jobagent.sources.linkedin_alert_source import LinkedInAlertSource
 from jobagent.sources.remotive_source import RemotiveSource
 from jobagent.storage.repository import JobRepository
 
@@ -42,6 +43,11 @@ def active_sources() -> list[JobSource]:
     if settings.adzuna_app_id and settings.adzuna_app_key:
         sources.append(AdzunaSource(settings.adzuna_app_id, settings.adzuna_app_key))
     return sources
+    if settings.gmail_address and settings.gmail_app_password:
+        sources.append(
+            LinkedInAlertSource(settings.gmail_address, settings.gmail_app_password)
+        )
+
 
 
 def fetch_all(sources: list[JobSource]) -> list[Job]:
