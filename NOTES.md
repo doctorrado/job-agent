@@ -341,3 +341,38 @@ significant work — don't let reasoning live only in chat.
   security company) -> all scores low, correctly reported as no fit.
 - Tests use plain line lists, never the real .docx files, since those are
   gitignored personal documents that will not exist in CI or on a fresh clone.
+
+## 2026-09-09 (Phase 4: tailoring)
+
+- `jobagent tailor --source X --job-id Y [--write]`. Reports three things
+  SEPARATELY because they lead to different actions:
+    covered - asked for, owned, already on the resume. Nothing to do.
+    missing - asked for, genuinely owned, resume doesn't say so. Safe to add.
+    absent  - asked for, NOT owned. Never added; shown only so the gap can be
+              judged. "Safe to add" means truthful, NOT advisable — adding PHP
+              to a data-engineering resume is honest and unhelpful.
+- Reports a COVERAGE figure ("you can meet 53% of what this posting asks
+  for"), which is the metric the scoring rubric structurally lacks. Note the
+  divergence: Sezzle "Data Analyst" scores 95/100 in `rank` but only 46%
+  coverage — `rank` measures whether your skills appear, coverage measures
+  what share of THEIR asks you meet. Worth folding into scoring later; that
+  is a deliberate change, not a quiet one.
+- --write produces a tailored COPY with skills reordered so job-relevant
+  terms lead. Truthful by construction: identical terms in and out, only the
+  order changes. A test asserts that invariant.
+- No python-docx needed after all. Inspecting the real files showed the
+  SKILLS paragraph is 8 runs alternating bold label / plain term list, one
+  list per run — so editing means replacing text in specific plain runs and
+  never touching formatting properties. stdlib zipfile + ElementTree rewrite
+  the document. The dreaded "runs" problem did not apply to these documents.
+- Deliberately NOT automated: rewriting bullet prose. Reframing requires
+  judging whether new wording is still true — a human call, not a regex.
+- Two bugs found by running it for real:
+  * _reorder dropped the trailing " | " separator between categories,
+    corrupting the layout. Now preserves leading AND trailing text verbatim.
+  * page_count always returned None: LibreOffice writes "/Type/Page" with NO
+    space and the code counted the spaced form. The page tree's "/Count" is
+    the reliable figure. One-page rule is now actually enforced.
+  * (third) the output filename sanitiser replaced "/" across the whole path,
+    flattening data/tailored/x.docx into a file in the repo root. Sanitise
+    the filename only, never the directory separators.

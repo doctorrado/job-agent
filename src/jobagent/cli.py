@@ -14,8 +14,9 @@ from jobagent.config import get_settings, load_profile
 from jobagent.logging import configure_logging, get_logger
 from jobagent.pipeline.fetch import run_fetch
 from jobagent.pipeline.score import score_job
-from jobagent.resumes.loader import load_resumes
+from jobagent.resumes.loader import docx_lines, load_resumes
 from jobagent.resumes.select import build_weights, choose_resume
+from jobagent.resumes.tailor import analyse_gaps, page_count, tailor_docx
 from jobagent.sources.jooble_source import LIFETIME_LIMIT, JoobleSource, read_usage
 from jobagent.storage.db import make_session_factory
 from jobagent.storage.repository import JobRepository, ReviewRepository
@@ -291,3 +292,96 @@ def pick_resume(
         )
     else:
         typer.echo(f"Use {choice.best.resume}.")
+
+
+@app.command()
+def tailor(
+    source: str = typer.Option(..., help="Job source, e.g. greenhouse"),
+    job_id: str = typer.Option(..., help="source_job_id of the posting"),
+    resume: str | None = typer.Option(None, help="Override the auto-picked resume"),
+    write: bool = typer.Option(
+        False, "--write", help="Write a tailored copy with skills reordered for this job"
+    ),
+    out_dir: str = typer.Option("data/tailored", help="Where to write the tailored copy"),
+) -> None:
+    """Show what a posting asks for versus what the chosen resume says.
+
+    Reports three separate things: what is already covered, what is safe to
+    add (you have it, the resume just does not mention it), and what the
+    posting wants that you genuinely do not have — which is never added, only
+    shown so you can judge the gap.
+    """
+    settings = get_settings()
+    profile = load_profile(settings.profile_path)
+    repository = JobRepository(make_session_factory(settings.db_path)())
+    job = next(
+        (j for j in repository.all() if j.source == source and j.source_job_id == job_id),
+        None,
+    )
+    if job is None:
+        typer.echo(f"No stored job {source}:{job_id}")
+        raise typer.Exit(1)
+
+    resumes = load_resumes(settings.resumes_dir)
+    if not resumes:
+        typer.echo(f"No .docx resumes found in {settings.resumes_dir}")
+        raise typer.Exit(1)
+
+    job_text = f"{job.title} {job.description}"
+    if resume:
+        chosen = next((r for r in resumes if r.name.lower() == resume.lower()), None)
+        if chosen is None:
+            names = ", ".join(r.name for r in resumes)
+            typer.echo(f"Unknown resume {resume!r}. Available: {names}")
+            raise typer.Exit(1)
+        note = "chosen by you"
+    else:
+        choice = choose_resume(job_text, build_weights(resumes))
+        chosen = next(r for r in resumes if r.name == choice.best.resume)
+        if choice.is_weak:
+            note = "auto-picked, but no resume fits this posting well"
+        elif choice.is_ambiguous:
+            note = f"auto-picked, but tied with {choice.ranked[1].resume}"
+        else:
+            note = "auto-picked"
+
+    resume_text = "\n".join(docx_lines(chosen.path)) if chosen.path else ""
+    gaps = analyse_gaps(job_text, resume_text, profile.skills)
+
+    typer.echo(f"{job.company} — {job.title}")
+    typer.echo(f"{job.url}\n")
+    typer.echo(f"Resume: {chosen.name}  ({note})")
+    typer.echo(f"You can meet {gaps.coverage}% of what this posting asks for.\n")
+
+    if gaps.missing:
+        typer.echo("SAFE TO ADD — you have these, this resume does not say so:")
+        for term in gaps.missing:
+            typer.echo(f"    + {term}")
+        typer.echo("")
+    if gaps.absent:
+        typer.echo("NOT YOURS — the posting wants these, you do not have them:")
+        typer.echo(f"    {', '.join(gaps.absent)}\n")
+    if gaps.covered:
+        typer.echo(f"Already covered ({len(gaps.covered)}): {', '.join(gaps.covered)}")
+
+    if not write:
+        return
+
+    priority = {t.lower() for t in gaps.covered}
+    # sanitise only the filename — never the directory separators
+    stem = f"{chosen.name}__{job.company}__{job.source_job_id}"
+    stem = re.sub(r"[^A-Za-z0-9._-]+", "_", stem)
+    destination = Path(out_dir) / f"{stem}.docx"
+    moved = tailor_docx(chosen.path, destination, priority)
+
+    pages = page_count(destination)
+    noun = "list" if moved == 1 else "lists"
+    typer.echo(f"\nWrote {destination} ({moved} skill {noun} reordered)")
+    if pages == 1:
+        typer.echo("Still one page.")
+    elif pages:
+        typer.echo(f"WARNING: this renders to {pages} pages — your rule is one.")
+    else:
+        typer.echo("Could not check the page count (LibreOffice unavailable).")
+    if gaps.missing:
+        typer.echo("Add the 'safe to add' terms by hand — placing them is your call.")
