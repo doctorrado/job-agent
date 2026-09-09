@@ -14,6 +14,8 @@ from jobagent.config import get_settings, load_profile
 from jobagent.logging import configure_logging, get_logger
 from jobagent.pipeline.fetch import run_fetch
 from jobagent.pipeline.score import score_job
+from jobagent.resumes.loader import load_resumes
+from jobagent.resumes.select import build_weights, choose_resume
 from jobagent.sources.jooble_source import LIFETIME_LIMIT, JoobleSource, read_usage
 from jobagent.storage.db import make_session_factory
 from jobagent.storage.repository import JobRepository, ReviewRepository
@@ -248,3 +250,44 @@ def import_reviews(
         f"Recorded {recorded} new verdicts, {skipped} already reviewed, "
         f"{blank} left blank. Total reviewed: {reviews.count()}."
     )
+
+
+@app.command("pick-resume")
+def pick_resume(
+    source: str = typer.Option(..., help="Job source, e.g. greenhouse"),
+    job_id: str = typer.Option(..., help="source_job_id of the posting"),
+) -> None:
+    """Say which master resume best fits one stored posting, and why."""
+    settings = get_settings()
+    repository = JobRepository(make_session_factory(settings.db_path)())
+    job = next(
+        (j for j in repository.all() if j.source == source and j.source_job_id == job_id),
+        None,
+    )
+    if job is None:
+        typer.echo(f"No stored job {source}:{job_id}")
+        raise typer.Exit(1)
+
+    resumes = load_resumes(settings.resumes_dir)
+    if not resumes:
+        typer.echo(f"No .docx resumes found in {settings.resumes_dir}")
+        raise typer.Exit(1)
+
+    choice = choose_resume(f"{job.title} {job.description}", build_weights(resumes))
+
+    typer.echo(f"{job.company} — {job.title}\n{job.url}\n")
+    for match in choice.ranked:
+        marker = "->" if match is choice.best else "  "
+        why = ", ".join(match.reasons[:7])
+        typer.echo(f" {marker} {match.resume:<7} {match.score:>5.1f}  {why}")
+
+    typer.echo("")
+    if choice.is_weak:
+        typer.echo("No resume is a strong fit for this posting — worth deciding yourself.")
+    elif choice.is_ambiguous:
+        runner_up = choice.ranked[1].resume
+        typer.echo(
+            f"{choice.best.resume} and {runner_up} are too close to call — your judgement."
+        )
+    else:
+        typer.echo(f"Use {choice.best.resume}.")

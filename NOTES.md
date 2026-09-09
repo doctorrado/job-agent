@@ -308,3 +308,36 @@ significant work — don't let reasoning live only in chat.
   (star schema -> D_Eng, OEE -> Manf, requirements gathering -> BPA), because
   the four share ~70% of their wording. Deterministic, no LLM, auto-updates
   when a resume is edited.
+
+## 2026-09-09 (Phase 4 begins: resume selection)
+
+- New `jobagent/resumes/` package: `loader.py` (read .docx, parse SKILLS +
+  PROFESSIONAL SUMMARY) and `select.py` (pick the best-fitting resume).
+  `jobagent pick-resume --source X --job-id Y` shows the ranking and why.
+- .docx read with stdlib zipfile + ElementTree — a .docx is just a zip holding
+  word/document.xml. python-docx is NOT added yet; it is needed for tailoring
+  (editing in place), so it waits until that step actually needs it.
+- FIRST PROTOTYPE REJECTED: weighting every word by rarity across the four
+  resumes (TF-IDF over 4 docs) surfaced junk reasons — "delivering",
+  "fast-paced", "including", "issues" — accidents of phrasing, not signal,
+  and it got the manufacturing case wrong. Replaced by using each resume's
+  own SKILLS section: a vocabulary the candidate curated by hand.
+  Distinctive terms then look right: star schema, dimensional modeling, OEE,
+  downtime analysis, process mapping, change management, Sysmac.
+- SECOND FIX: scores were normalised by each resume's total vocabulary
+  weight, which meant the SHORTEST skills list won ties (D_Eng carries 23.9
+  total weight vs BPA's 14.6 — a 60% handicap on an irrelevant factor).
+  Switched to absolute matched weight. Ties now happen honestly.
+- Thresholds calibrated on real postings: clear matches score 2.0-3.5,
+  no-fit postings 0.5-1.0. WEAK_MATCH_SCORE=1.5, AMBIGUOUS_MARGIN=0.5.
+- Tried harder penalties on shared terms (1/df^2, 1/df^3) to break ties.
+  IT CANNOT WORK and this is worth remembering: tied resumes matched the
+  IDENTICAL set of terms, so every weighting function returns the same
+  ordering. The ties are an information problem, not a maths problem — the
+  posting simply says nothing that separates DA from Manf. Kept 1/df.
+- Real behaviour: "Senior Data Engineer" -> D_Eng 3.5 (decisive);
+  "Data Analyst" -> DA/Manf tied, flagged; "Business Analyst II" -> BPA/DA
+  tied, flagged; "Manufacturing Quality Engineer" (a hardware-QA role at a
+  security company) -> all scores low, correctly reported as no fit.
+- Tests use plain line lists, never the real .docx files, since those are
+  gitignored personal documents that will not exist in CI or on a fresh clone.

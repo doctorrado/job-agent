@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     profile_path: Path = Path("config/profile.yaml")
     db_path: Path = Path("data/jobs.db")
+    resumes_dir: Path = Path("private/resumes")
 
     anthropic_api_key: str | None = None
     adzuna_app_id: str | None = None
