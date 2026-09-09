@@ -8,7 +8,7 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 
 from jobagent.models.job import Job, RemoteType, Seniority
-from jobagent.storage.orm import JobRecord
+from jobagent.storage.orm import JobRecord, JobReview
 
 
 class JobRepository:
@@ -69,3 +69,56 @@ def _to_job(record: JobRecord) -> Job:
         posted_date=record.posted_date,
         collected_at=record.first_seen_at,
     )
+
+
+VERDICTS = ("worth_applying", "unsure", "not_a_fit")
+
+
+class ReviewRepository:
+    """Stores one verdict per posting, so nothing is ever judged twice."""
+
+    def __init__(self, session: Session) -> None:
+        self.session = session
+
+    def verdicts(self) -> dict[str, str]:
+        """Every recorded verdict, keyed by "source:source_job_id" to match
+        Job.dedupe_key so callers can filter without a join."""
+        return {
+            f"{r.source}:{r.source_job_id}": r.verdict
+            for r in self.session.query(JobReview).all()
+        }
+
+    def record(
+        self,
+        source: str,
+        source_job_id: str,
+        verdict: str,
+        reasoning: str = "",
+        reviewed_by: str = "claude",
+    ) -> bool:
+        """Store a verdict. Returns True if newly recorded, False if this
+        posting had already been reviewed (existing verdicts are never
+        silently overwritten — that would defeat "review once")."""
+        if verdict not in VERDICTS:
+            raise ValueError(f"unknown verdict {verdict!r}; expected one of {VERDICTS}")
+        existing = (
+            self.session.query(JobReview)
+            .filter_by(source=source, source_job_id=source_job_id)
+            .one_or_none()
+        )
+        if existing is not None:
+            return False
+        self.session.add(
+            JobReview(
+                source=source,
+                source_job_id=source_job_id,
+                verdict=verdict,
+                reasoning=reasoning,
+                reviewed_by=reviewed_by,
+            )
+        )
+        self.session.commit()
+        return True
+
+    def count(self) -> int:
+        return self.session.query(JobReview).count()

@@ -210,3 +210,42 @@ significant work — don't let reasoning live only in chat.
 - Lesson repeated from earlier bugs: single-word keyword matching against
   free-text marketing copy produces false positives at scale. Prefer phrases,
   and prefer structured fields over prose when the source offers both.
+
+## 2026-09-09 (review pile: judge once, never again)
+
+- Added a `job_reviews` table + ReviewRepository. Verdicts are
+  worth_applying / unsure / not_a_fit, one per posting, and record() refuses
+  to overwrite an existing verdict — that refusal is what makes "review once"
+  actually hold.
+- Own table rather than columns on JobRecord: conceptually a review is a
+  different fact from a posting, and practically SQLAlchemy's create_all can
+  add a table but cannot ALTER an existing one (no migration tool here).
+- Workflow is a file round-trip so it batches and needs no API:
+  `jobagent review-queue` -> data/to_review.json -> Claude fills verdicts ->
+  `jobagent import-reviews`. The batch file carries everything needed to
+  judge, so a review session needs no other project context.
+- Decided NOT to delete not_a_fit jobs, despite it being tempting: the
+  posting still exists at the source, so a deleted row is re-fetched and
+  re-reviewed next run — deletion actively defeats "judge once". Hidden from
+  `rank` by default instead, `--all` to see them. Nothing is ever deleted.
+- `rank` is now review-aware: hides not_a_fit, shows the verdict inline.
+- Review exports run descriptions through `_readable()` (unescape + strip
+  tags). A rough regex tag-strip is acceptable THERE because the output is
+  only read by a human/Claude; extraction still uses the original text, so
+  scoring never depends on it.
+- Documented the three session types in CLAUDE.md (review / discovery /
+  building) and made explicit that the repo is the memory, not Claude.
+
+### Open follow-ups
+- LinkedIn alerts contain **385 distinct Colombian-market companies**
+  (Scotiabank, Accenture, EY, Cargill, Enel, Keralty, Marsh, adidas, EPAM...).
+  Feed these into the company-discovery check instead of only generic English
+  searches — sourced from the user's actual market. Not yet done.
+- ATS detection instead of scraping career pages: many companies with custom
+  career pages run Greenhouse/Lever/Ashby/SmartRecruiters/Workday underneath,
+  all with public APIs. Workday especially covers the big multinationals the
+  user prioritises. Scraping arbitrary career sites stays ruled out.
+- Skill scoring measures overlap, never COVERAGE: a JD listing 40
+  technologies where the user matches 6 scores the same as one listing
+  exactly his 6. Needs required-vs-preferred extraction to fix properly —
+  the best remaining case for the deferred LLM review pass.
