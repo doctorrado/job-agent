@@ -247,10 +247,22 @@ significant work — don't let reasoning live only in chat.
   they already arrive via the LinkedIn alerts themselves; a board would only
   add depth. Also: "elempleo" (25 postings) is Colombia's big job board, not
   an employer — same aggregator-as-company trap as Jobgether.
-- ATS detection instead of scraping career pages: many companies with custom
-  career pages run Greenhouse/Lever/Ashby/SmartRecruiters/Workday underneath,
-  all with public APIs. Workday especially covers the big multinationals the
-  user prioritises. Scraping arbitrary career sites stays ruled out.
+- ~~ATS detection / more platforms~~ INVESTIGATED AND DROPPED (2026-09-09).
+  Tested the top LinkedIn companies against Ashby/Workable/Recruitee/
+  SmartRecruiters too: 3/20 "hits" that were all FALSE — accenture.recruitee
+  .com and ey.recruitee.com are abandoned trial accounts containing Recruitee's
+  built-in "Senior Marketer (Sample)" demo job, and agileengine had 1 unrelated
+  US posting. Real rate is 0/20; adding these platforms would import sample
+  data. Colombian employers use SuccessFactors/Workday/Taleo.
+  Workday IS where these multinationals are, and its careers sites call
+  POST /wday/cxs/{tenant}/{site}/jobs — public and unauthenticated, but NOT
+  published as a third-party API (unlike Greenhouse/Lever, which document
+  theirs for this use). That is a grayer standard than anything else in this
+  project, and the only thing it buys is more postings from companies whose
+  jobs already arrive via LinkedIn alerts. Deliberately not pursued. Revisit
+  only if the user explicitly accepts that tradeoff.
+  Takeaway: the Colombian market is not reachable via startup-ATS APIs;
+  LinkedIn alert parsing is the pipeline that covers it.
 - Skill scoring measures overlap, never COVERAGE: a JD listing 40
   technologies where the user matches 6 scores the same as one listing
   exactly his 6. Needs required-vs-preferred extraction to fix properly —
