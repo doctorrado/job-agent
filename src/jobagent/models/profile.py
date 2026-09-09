@@ -29,6 +29,15 @@ class SalaryExpectation(BaseModel):
     minimum_monthly: int | None = None
     minimum_hourly_usd: float | None = None
 
+class RoleKeywords(BaseModel):
+    """Short phrases matched against a job title, in any language you search
+    in. Kept separate from target_roles/secondary_roles (the human-readable
+    role names) because matching needs partial phrases — "data engineer"
+    matches "Data Engineer II (Python/PySpark)" where the full role name
+    "Junior Data Engineer" would not."""
+
+    primary: list[str] = Field(default_factory=list)
+    secondary: list[str] = Field(default_factory=list)
 
 
 class Profile(BaseModel):
@@ -46,3 +55,5 @@ class Profile(BaseModel):
     locations: LocationPreferences = Field(default_factory=LocationPreferences)
     work_authorization: WorkAuthorization = Field(default_factory=WorkAuthorization)
     salary: SalaryExpectation = Field(default_factory=SalaryExpectation)
+    role_keywords: RoleKeywords = Field(default_factory=RoleKeywords)
+

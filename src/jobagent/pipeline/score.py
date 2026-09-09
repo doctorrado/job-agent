@@ -23,6 +23,7 @@ from jobagent.pipeline.extract import (
     matched_skills,
     remote_scope,
     requires_us_work_authorization,
+    role_relevance,
     salary_hourly_usd,
     salary_monthly_cop,
     years_required,
@@ -36,6 +37,8 @@ _MIN_DESCRIPTION_CHARS = 200
 # no single posting will ever mention all of them.
 _SKILL_MATCH_CAP = 6
 
+_ROLE_POINTS = {"primary": 20, "secondary": 12, "none": 0}
+
 
 
 @dataclass
@@ -48,6 +51,9 @@ class ScoreResult:
     matched_skills: list[str] = field(default_factory=list)
     salary_monthly_cop: int | None = None
     salary_hourly_usd: float | None = None
+    salary_hourly_usd: float | None = None
+    dampened: bool = False
+
 
 
 def score_job(job: Job, profile: Profile) -> ScoreResult:
@@ -71,10 +77,11 @@ def score_job(job: Job, profile: Profile) -> ScoreResult:
         return ScoreResult(job=job, eligible=False, ineligible_reason=reason)
 
     skills = matched_skills(job, profile)
-    skill_points = round(min(len(skills), _SKILL_MATCH_CAP) / _SKILL_MATCH_CAP * 40)
+    skill_points = round(min(len(skills), _SKILL_MATCH_CAP) / _SKILL_MATCH_CAP * 30)
 
     breakdown = {
         "skills": skill_points,
+        "role": _ROLE_POINTS[role_relevance(job, profile)],
         "seniority": _score_seniority(job, profile),
         "location": _score_location(job, profile),
         "salary": _score_salary(salary_cop, hourly_usd, profile),
@@ -97,18 +104,20 @@ def score_job(job: Job, profile: Profile) -> ScoreResult:
         matched_skills=skills,
         salary_monthly_cop=salary_cop,
         salary_hourly_usd=hourly_usd,
+        dampened=dampening < 1.0,
     )
+
 
 
 def _score_seniority(job: Job, profile: Profile) -> int:
     years = years_required(job)
     if years is not None:
         distance = max(0, years - profile.max_years_experience)
-        return max(0, 25 - distance * 8)
+        return max(0, 20 - distance * 6)
     if detect_seniority(job) is Seniority.senior:
-        return 5  # heavy penalty, not a hard exclude — title labels are noisy
-    return 25  # junior/entry/mid/unknown: no reliable reason to penalize
-
+        return 4  # heavy penalty, not a hard exclude — title labels are noisy
+    return 20  # junior/entry/mid/unknown: no reliable reason to penalize
+    
 
 def _score_location(job: Job, profile: Profile) -> int:
     scope = remote_scope(job)
@@ -121,8 +130,8 @@ def _score_location(job: Job, profile: Profile) -> int:
 
 def _score_salary(salary_cop: int | None, hourly_usd: float | None, profile: Profile) -> int:
     if salary_cop is None and hourly_usd is None:
-        return 8  # undisclosed — neutral, never assumed to meet or miss target
+        return 5  # undisclosed — neutral, never assumed to meet or miss target
     if salary_cop is not None:
         target = profile.salary.target_monthly
-        return 15 if target and salary_cop >= target else 12
-    return 13  # cleared the USD hourly floor above; no separate target to aim for yet
+        return 10 if target and salary_cop >= target else 8
+    return 9  # cleared the USD hourly floor above; no separate target yet

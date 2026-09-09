@@ -39,3 +39,28 @@ locations:
 work_authorization:
   authorized_countries: []   # e.g. ["Colombia"]
   open_to_sponsorship: false
+
+role_keywords:
+  primary:
+    - data analyst
+    - analista de datos
+    - data engineer
+    - ingeniero de datos
+    - analytics engineer
+    - business intelligence
+    - bi engineer
+    - bi analyst
+    - analista bi
+    - analista de visualizacion
+    - data scientist
+  secondary:
+    - business analyst
+    - analista de negocio
+    - reporting
+    - reporteria
+    - etl
+    - data migration
+    - power bi
+    - analista
+    - data
+    - datos

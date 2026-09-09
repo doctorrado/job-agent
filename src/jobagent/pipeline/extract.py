@@ -13,6 +13,7 @@ ambiguous fits with Claude" idea this deliberately doesn't try to solve.
 from __future__ import annotations
 
 import re
+import unicodedata
 
 from jobagent.models.job import Job, Seniority
 from jobagent.models.profile import Profile
@@ -133,3 +134,23 @@ def salary_hourly_usd(job: Job) -> float | None:
         annual = float(re.sub(",", "", annual_match.group(1)))
         return annual / _FULL_TIME_HOURS_PER_YEAR
     return None
+
+
+def _strip_accents(text: str) -> str:
+    decomposed = unicodedata.normalize("NFKD", text)
+    return "".join(char for char in decomposed if not unicodedata.combining(char))
+
+
+def role_relevance(job: Job, profile: Profile) -> str:
+    """'primary', 'secondary' or 'none' — does this title look like a role
+    the candidate is actually targeting? Accent-insensitive so Spanish
+    titles match plain-ASCII keywords, and title-only so it works for
+    description-less sources like LinkedIn alert emails."""
+    title = _strip_accents(job.title.lower())
+    for phrase in profile.role_keywords.primary:
+        if _strip_accents(phrase.lower()) in title:
+            return "primary"
+    for phrase in profile.role_keywords.secondary:
+        if _strip_accents(phrase.lower()) in title:
+            return "secondary"
+    return "none"

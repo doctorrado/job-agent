@@ -42,27 +42,47 @@ def check_profile() -> None:
 
 
 @app.command()
-def rank() -> None:
-    """Score every stored job against your profile and print a ranked report."""
+def rank(
+    source: str | None = typer.Option(
+        None, help="Only rank jobs from this source, e.g. linkedin_alerts"
+    ),
+    limit: int = typer.Option(20, help="How many jobs to show"),
+) -> None:
+    """Score every stored job against your profile and print a ranked report.
+
+    Scores are only really comparable within a source: sources carrying full
+    job descriptions can earn skill points that description-less ones (like
+    LinkedIn alert emails) structurally cannot. Use --source to compare
+    like-for-like.
+    """
     settings = get_settings()
     profile = load_profile(settings.profile_path)
     repository = JobRepository(make_session_factory(settings.db_path)())
 
-    results = [score_job(job, profile) for job in repository.all()]
+    all_jobs = repository.all()
+    jobs = [job for job in all_jobs if job.source == source] if source else all_jobs
+    if source and not jobs:
+        available = ", ".join(sorted({job.source for job in all_jobs}))
+        typer.echo(f"No jobs from source {source!r}. Available: {available}")
+        raise typer.Exit(1)
+
+    results = [score_job(job, profile) for job in jobs]
     eligible = sorted((r for r in results if r.eligible), key=lambda r: r.total, reverse=True)
     ineligible = [r for r in results if not r.eligible]
 
-    typer.echo(f"{len(eligible)} eligible, {len(ineligible)} filtered out\n")
-    for r in eligible[:20]:
+    scope = f" from {source}" if source else ""
+    typer.echo(f"{len(eligible)} eligible{scope}, {len(ineligible)} filtered out\n")
+    for r in eligible[:limit]:
         matched = ",".join(r.matched_skills) or "none"
         b = r.breakdown
-        note = "  (dampened — no skill overlap)" if not r.matched_skills else ""
+        note = "  (dampened — no skill overlap)" if r.dampened else ""
         typer.echo(
-            f"{r.total:3d}  {r.job.company} — {r.job.title}{note}\n"
-            f"      skills={b['skills']} seniority={b['seniority']} "
+            f"{r.total:3d}  [{r.job.source}] {r.job.company} — {r.job.title}{note}\n"
+            f"      skills={b['skills']} role={b['role']} seniority={b['seniority']} "
             f"location={b['location']} salary={b['salary']}  matched={matched}\n"
             f"      {r.job.url}"
         )
+
 
 
 @app.command()

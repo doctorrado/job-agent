@@ -155,3 +155,40 @@ significant work — don't let reasoning live only in chat.
   every posting, so their boards are broadly not viable for this user,
   not a per-role issue.
 
+
+## 2026-09-09 (LinkedIn alerts + role-fit scoring)
+
+- Built LinkedInAlertSource: reads LinkedIn job-alert digests from Gmail over
+  IMAP (read-only; the mailbox is never modified). Parses the text/plain part
+  of the multipart email, not the HTML — real alerts carry both and the plain
+  part has a regular structure (dashed separators, then title/company/location
+  /"View job:" link), so NO HTML parser dependency was needed. I had flagged
+  beautifulsoup4 as probably necessary; the real email proved otherwise.
+  First real run: 1,194 jobs parsed, 689 new. Total stored 240 -> 2,812.
+- Alert emails carry NO job description, only title/company/location/link.
+  Two consequences: (a) they can never be caught by the work-auth filter,
+  (b) skills can only be matched from the title.
+- Fixed a scoring flaw this exposed: zero-skill dampening was treating
+  "no description to search" as evidence of a bad fit. Now only dampens when
+  there IS a real description (>= 200 chars). Same "never assume" principle
+  as undisclosed salary. Sources cluster far from that threshold (LinkedIn
+  alerts 0 chars, next-shortest Adzuna ~495), so it isn't a fragile cutoff.
+- Bug worth remembering: the LinkedIn wiring was first pasted AFTER
+  `return sources` in active_sources() — unreachable dead code, so the source
+  silently never ran. ruff's default rules do not flag unreachable code.
+- Added `jobagent rank --source X --limit N`. Scores are only really
+  comparable within a source: description-rich sources can earn skill points
+  that description-less ones structurally cannot (LinkedIn best 73 / median
+  53 vs 86-93 elsewhere). --source lets you compare like-for-like.
+- Added a role-fit category (20 pts) matching the TITLE against
+  profile.role_keywords (primary/secondary), accent-insensitive so Spanish
+  titles work — most of the best Colombian jobs are in Spanish ("Analista de
+  datos", "Ingeniero de datos", "Analista de Visualización"), which
+  English-only matching was missing entirely.
+- Rubric rescaled to keep 100: skills 40->30, role 0->20, seniority 25->20,
+  location 20 (unchanged), salary 15->10. Salary was cut because it is
+  neutral for nearly every job seen, so it was contributing a near-constant
+  rather than ranking information.
+- Result: the flat wall of 60s broke apart correctly. Top LinkedIn results
+  are now all real data/BI roles in Colombia (Blend, TransUnion, Accenture,
+  Inter Rapidísimo, COHNECTI); Java backend roles dropped out of the top 15.
