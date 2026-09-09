@@ -267,3 +267,44 @@ significant work — don't let reasoning live only in chat.
   technologies where the user matches 6 scores the same as one listing
   exactly his 6. Needs required-vs-preferred extraction to fix properly —
   the best remaining case for the deferred LLM review pass.
+
+## 2026-09-09 (resumes read; profile brought up to date)
+
+- Read the four master resumes in private/resumes/ (DOCX; extracted with the
+  already-installed `soffice --headless --convert-to txt`). They differ only
+  in EMPHASIS — same employers, dates and achievements, reframed:
+  DA = dashboards/KPI/BI · D_Eng = ETL/dimensional modeling/warehousing ·
+  BPA = process mapping/requirements/Lean · Manf = OEE/downtime/TPS/safety.
+- The resumes revealed the profile was STALE. Added to candidate_profile.md:
+  Mazda Toyota Manufacturing (May-Aug 2025, Huntsville) — the most recent and
+  most substantial role, absent entirely from the old doc ($35k overtime
+  reduction, real-time production DB with 98% compression, bodyweld downtime
+  dashboard, ergonomic safety programme); the ML vision system work at Toyota
+  (26% inspection downtime reduction); GPA 3.74; International Academic
+  Excellence Scholarship; Toyota Production Systems certification (May 2023);
+  and the portfolio project's growth from ~535K to 6.3M events with Metabase
+  and DuckDB.
+- config/profile.yaml skills: 19 -> 62, taken verbatim from the resumes.
+  Previously-invisible skills worth 300+ job mentions: Linux (106 jobs),
+  Data Modeling (45), ETL (39), BASH (34), Data Warehousing (29), SQL Server
+  (25), BigQuery (20), Pandas (8), Power Automate (7), NumPy (3).
+  DELIBERATELY NOT ADDED: Tableau (49 jobs), Snowflake (70), dbt (42) — they
+  appear in job postings but NOT on his resumes. Adding them would be
+  fabrication, which is the first non-negotiable.
+- Checked whether the bigger list flattens the skills signal: only 4% of
+  eligible jobs now hit the 6-skill cap, so _SKILL_MATCH_CAP stays at 6.
+  Decision made on measurement, not guesswork.
+- Effect: Sezzle "Data Analyst" 85 -> 95 (full skill marks); Sezzle "Data
+  Infrastructure Engineer Intern" rose to 87 on newly-recognised ETL/
+  Data Pipelines/Data Warehousing/Data Validation.
+- Phase 4 design decision (from the DOCX format question): tailoring must
+  EDIT A COPY of the .docx in place, never regenerate the document, so the
+  one-page/9.5pt/ATS-clean formatting survives. Known hard part: python-docx
+  splits paragraph text across "runs", so naive replace breaks styling.
+  LibreOffice is installed, so a tailored file can be converted to PDF and
+  page-counted to enforce the one-page rule.
+- Resume SELECTION design: derive each resume's keyword profile from its own
+  text and match against the JD — but weight terms distinctive to ONE resume
+  (star schema -> D_Eng, OEE -> Manf, requirements gathering -> BPA), because
+  the four share ~70% of their wording. Deterministic, no LLM, auto-updates
+  when a resume is edited.
