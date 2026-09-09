@@ -42,12 +42,9 @@ def active_sources() -> list[JobSource]:
     settings = get_settings()
     if settings.adzuna_app_id and settings.adzuna_app_key:
         sources.append(AdzunaSource(settings.adzuna_app_id, settings.adzuna_app_key))
-    return sources
     if settings.gmail_address and settings.gmail_app_password:
-        sources.append(
-            LinkedInAlertSource(settings.gmail_address, settings.gmail_app_password)
-        )
-
+        sources.append(LinkedInAlertSource(settings.gmail_address, settings.gmail_app_password))
+    return sources
 
 
 def fetch_all(sources: list[JobSource]) -> list[Job]:

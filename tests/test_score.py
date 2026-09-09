@@ -88,7 +88,16 @@ def test_below_hourly_usd_floor_is_hard_excluded():
     assert "hr floor" in result.ineligible_reason
 
 def test_zero_skill_match_is_dampened_not_hidden():
-    job = _job(title="Sales Jedi", description="Sell things to people.")
+    # A real description with genuinely zero overlap — long enough to count
+    # as a description, which is what makes "no matches" meaningful evidence.
+    description = (
+        "We are looking for a driven sales professional to join our team. "
+        "You will own the full sales cycle, from prospecting through close, "
+        "build relationships with key accounts, negotiate contracts, and "
+        "consistently exceed quarterly revenue targets in a fast-paced "
+        "environment. Prior quota-carrying experience strongly preferred."
+    )
+    job = _job(title="Sales Jedi", description=description)
     result = score_job(job, _profile())
     assert result.eligible is True
     assert result.breakdown["skills"] == 0
