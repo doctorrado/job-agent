@@ -237,10 +237,16 @@ significant work — don't let reasoning live only in chat.
   building) and made explicit that the repo is the memory, not Claude.
 
 ### Open follow-ups
-- LinkedIn alerts contain **385 distinct Colombian-market companies**
-  (Scotiabank, Accenture, EY, Cargill, Enel, Keralty, Marsh, adidas, EPAM...).
-  Feed these into the company-discovery check instead of only generic English
-  searches — sourced from the user's actual market. Not yet done.
+- ~~Feed the 385 LinkedIn-sourced companies into company-discovery~~ TESTED
+  AND REJECTED (2026-09-09): checked the 25 most common LinkedIn companies
+  against Greenhouse and Lever with generated slug variants — **0/25 hits**.
+  Greenhouse/Lever are US-tech-startup ATSs; Colombian employers (elempleo,
+  BairesDev, Scotiabank, Inetum, Accenture Colombia, EPAM, EY, Softtek,
+  Stefanini, Auxis, Keralty, Enel) run SuccessFactors/Workday/Taleo instead.
+  Do not re-attempt this as-is. Note these companies' jobs are NOT missing —
+  they already arrive via the LinkedIn alerts themselves; a board would only
+  add depth. Also: "elempleo" (25 postings) is Colombia's big job board, not
+  an employer — same aggregator-as-company trap as Jobgether.
 - ATS detection instead of scraping career pages: many companies with custom
   career pages run Greenhouse/Lever/Ashby/SmartRecruiters/Workday underneath,
   all with public APIs. Workday especially covers the big multinationals the
