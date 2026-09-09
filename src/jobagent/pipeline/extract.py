@@ -40,10 +40,20 @@ _US_AUTH_PATTERN = re.compile(
 )
 
 _COLOMBIA_WORDS = re.compile(r"\b(colombia|medell[ií]n|bogot[aá])\b", re.I)
-_REMOTE_ANYWHERE_WORDS = re.compile(
-    r"\b(remote[- ]anywhere|worldwide|global|anywhere in the world)\b", re.I
-)
 _LATAM_WORDS = re.compile(r"\b(latam|latin america)\b", re.I)
+# Location-FIELD values that genuinely mean "anywhere". Trusted only when they
+# are the location, never when the same word turns up in description prose.
+_ANYWHERE_LOCATION = re.compile(r"\b(worldwide|anywhere|global)\b", re.I)
+# Description phrases specific enough to trust inside free prose. A bare
+# "global" or "worldwide" is NOT enough: corporate copy says "global team",
+# "worldwide deployment", "organizations worldwide" constantly. 708 of 844
+# old remote_anywhere matches came from the single word "global" — including
+# an on-site Bangalore role. See NOTES.md (2026-09-09).
+_ANYWHERE_PHRASE = re.compile(
+    r"(work (?:from|remotely from) anywhere|anywhere in the world|"
+    r"remote[- ]anywhere|(?:fully|globally) distributed)",
+    re.I,
+)
 
 # Requires an explicit "COP" mention — a bare "$" is ambiguous (we've seen
 # USD annual ranges, CAD/USD ranges, even per-word/per-task freelance rates
@@ -94,13 +104,18 @@ def requires_us_work_authorization(job: Job) -> bool:
 
 
 def remote_scope(job: Job) -> str:
-    """One of: remote_from_colombia, remote_latam, remote_anywhere, other, unknown."""
-    text = f"{job.location or ''} {job.description}"
-    if _COLOMBIA_WORDS.search(text):
+    """One of: remote_from_colombia, remote_latam, remote_anywhere, other, unknown.
+
+    The location field and the description are searched differently on
+    purpose. The location field is high-signal — a value of "Worldwide" really
+    does mean worldwide. The description is noisy prose where "global" and
+    "worldwide" almost always describe the company, not who may apply."""
+    location = job.location or ""
+    if _COLOMBIA_WORDS.search(location) or _COLOMBIA_WORDS.search(job.description):
         return "remote_from_colombia"
-    if _REMOTE_ANYWHERE_WORDS.search(text):
+    if _ANYWHERE_LOCATION.search(location) or _ANYWHERE_PHRASE.search(job.description):
         return "remote_anywhere"
-    if _LATAM_WORDS.search(text):
+    if _LATAM_WORDS.search(location) or _LATAM_WORDS.search(job.description):
         return "remote_latam"
     if job.remote_type.value == "remote":
         return "unknown"

@@ -67,8 +67,24 @@ def test_remote_scope_detects_colombia():
     assert remote_scope(_job(location="Remote - Colombia")) == "remote_from_colombia"
 
 
-def test_remote_scope_detects_anywhere():
-    assert remote_scope(_job(description="Remote, open worldwide.")) == "remote_anywhere"
+def test_remote_scope_detects_anywhere_from_location_field():
+    # Remotive literally uses "Worldwide" as the location value.
+    assert remote_scope(_job(location="Worldwide")) == "remote_anywhere"
+
+
+def test_remote_scope_detects_anywhere_from_explicit_phrase():
+    job = _job(description="This is a fully remote role - work from anywhere.")
+    assert remote_scope(job) == "remote_anywhere"
+
+
+def test_remote_scope_ignores_global_in_company_prose():
+    # Real false positive this replaced: an on-site Bangalore role scored full
+    # location marks because its description said "global Support Engineering".
+    job = _job(
+        location="Bangalore, India",
+        description="Create pathways into global Support Engineering management roles.",
+    )
+    assert remote_scope(job) == "other"
 
 
 def test_salary_monthly_cop_parses_disclosed_amount():

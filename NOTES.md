@@ -192,3 +192,21 @@ significant work — don't let reasoning live only in chat.
 - Result: the flat wall of 60s broke apart correctly. Top LinkedIn results
   are now all real data/BI roles in Colombia (Blend, TransUnion, Accenture,
   Inter Rapidísimo, COHNECTI); Java backend roles dropped out of the top 15.
+
+## 2026-09-09 (location false-positive fix)
+
+- Found via a real ranked result: "KnowBe4 - Analytics Engineer (Bengaluru,
+  India)" scored location=20/20. Cause: _REMOTE_ANYWHERE_WORDS matched the
+  bare word "global", which corporate prose uses constantly ("global team",
+  "global Support Engineering"). Scale: 708 of 844 remote_anywhere matches
+  came from that one word — a quarter of the database on a false signal.
+- Fix: the location FIELD and the DESCRIPTION now get different trust levels.
+  The location field is high-signal (Remotive literally uses "Worldwide" as a
+  location value, which really does mean worldwide). The description is noisy
+  prose, so it only matches specific phrases: "work from anywhere", "anywhere
+  in the world", "remote-anywhere", "fully/globally distributed".
+- Impact: remote_anywhere 844 -> 86. Artefact "Data Engineer - GenAI" fell
+  from the #1 slot (90) to 75 once its bogus location points were removed.
+- Lesson repeated from earlier bugs: single-word keyword matching against
+  free-text marketing copy produces false positives at scale. Prefer phrases,
+  and prefer structured fields over prose when the source offers both.
