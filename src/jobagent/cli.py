@@ -5,6 +5,8 @@ from __future__ import annotations
 import html
 import json
 import re
+import sys
+import webbrowser
 from pathlib import Path
 
 import typer
@@ -163,6 +165,27 @@ def _readable(text: str, limit: int) -> str:
 # Matches _MIN_DESCRIPTION_CHARS in scoring: below this there is no posting
 # body to reason about, only a title, company and location.
 _MIN_EVIDENCE_CHARS = 200
+
+
+def _posting_path(directory: Path, source: str, job_id: str) -> Path:
+    """Where a hand-saved posting body lives for one job."""
+    return directory / f"{source}_{job_id}.txt"
+
+
+def _read_until_sentinel(sentinel: str = "END") -> str | None:
+    """Collect pasted lines until a line that is exactly the sentinel.
+
+    Not sys.stdin.read(): that consumes to EOF, so after the first Ctrl-D
+    every later read returns "" and the rest of the run would silently skip
+    every job. A sentinel line behaves the same in a terminal and in a pipe.
+    Returns None only when stdin closes for good.
+    """
+    lines: list[str] = []
+    for line in sys.stdin:
+        if line.rstrip("\n") == sentinel:
+            return "".join(lines)
+        lines.append(line)
+    return "".join(lines) if lines else None
 
 
 @app.command("review-queue")
@@ -410,12 +433,17 @@ def tailor(
     # posting into a text file is the deliberate, ToS-safe way in; scraping
     # the page is not. Same escape-hatch role FileSource plays for fetching.
     description = job.description
+    saved = _posting_path(settings.postings_dir, job.source, job.source_job_id)
     if posting:
         posting_path = Path(posting)
         if not posting_path.is_file():
             typer.echo(f"No such posting file: {posting}")
             raise typer.Exit(1)
         description = posting_path.read_text(encoding="utf-8")
+    elif len(description.strip()) < _MIN_EVIDENCE_CHARS and saved.is_file():
+        # `read-postings` already collected this one; use it without being asked.
+        description = saved.read_text(encoding="utf-8")
+        typer.echo(f"(using the posting you saved at {saved})")
 
     job_text = f"{job.title} {description}"
     if resume:
@@ -481,3 +509,76 @@ def tailor(
         typer.echo("Could not check the page count (LibreOffice unavailable).")
     if gaps.missing:
         typer.echo("Add the 'safe to add' terms by hand — placing them is your call.")
+
+
+@app.command("read-postings")
+def read_postings(
+    verdict: str = typer.Option(
+        "worth_applying", help="Which reviewed jobs to work through"
+    ),
+    limit: int = typer.Option(10, help="How many to go through in one sitting"),
+    open_browser: bool = typer.Option(
+        True, "--open/--no-open", help="Open each posting in your browser"
+    ),
+) -> None:
+    """Work through job-alert leads that arrived with no description.
+
+    Job-alert emails carry a title and a link, nothing else, so resume
+    selection and gap analysis have nothing to read. This opens each posting
+    in YOUR browser — where you are already logged in — and saves whatever
+    you paste back. Fetching those pages with the script instead would be
+    scraping: against LinkedIn's terms, and a real risk to your own account
+    while you are actively job hunting. Automating the clicking is fine;
+    automating the reading is not.
+    """
+    settings = get_settings()
+    session = make_session_factory(settings.db_path)()
+    reviews = ReviewRepository(session).verdicts()
+    jobs = JobRepository(session).all()
+
+    settings.postings_dir.mkdir(parents=True, exist_ok=True)
+    pending = [
+        j
+        for j in jobs
+        if reviews.get(j.dedupe_key) == verdict
+        and len((j.description or "").strip()) < _MIN_EVIDENCE_CHARS
+        and not _posting_path(settings.postings_dir, j.source, j.source_job_id).is_file()
+    ]
+    if not pending:
+        typer.echo(f"Nothing left: every '{verdict}' lead already has a posting saved.")
+        return
+
+    typer.echo(
+        f"{len(pending)} '{verdict}' leads still need their posting text. "
+        f"Doing up to {limit} now.\n"
+    )
+    saved = 0
+    for job in pending[:limit]:
+        typer.echo(f"── {job.company} — {job.title}")
+        typer.echo(f"   {job.url}")
+        if open_browser:
+            webbrowser.open(str(job.url))
+        typer.echo(
+            "   Paste the job description, then type END on its own line.\n"
+            "   (END with nothing above it skips this one, Ctrl-C stops)\n"
+        )
+        try:
+            body = _read_until_sentinel()
+        except KeyboardInterrupt:
+            typer.echo("\nStopped.")
+            break
+        if body is None:  # stdin closed entirely
+            typer.echo("\nInput ended.")
+            break
+        if not body.strip():
+            typer.echo("   skipped\n")
+            continue
+        destination = _posting_path(settings.postings_dir, job.source, job.source_job_id)
+        destination.write_text(body, encoding="utf-8")
+        saved += 1
+        typer.echo(f"   saved {len(body):,} chars -> {destination}\n")
+
+    typer.echo(
+        f"Saved {saved}. `jobagent tailor --source X --job-id Y` now picks these up "
+        "automatically — no --posting needed."
+    )

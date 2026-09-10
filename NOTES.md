@@ -546,3 +546,30 @@ The review session flagged 8 of 40 rows as repeat listings. Two causes:
 
 Across the current pool: 2,746 unreviewed = 2,092 distinct openings + 654
 repeat listings. Batches are ~24% denser.
+
+### `read-postings`: automating the clicking, not the reading (2026-09-10)
+
+Andres asked whether the script could follow each job-alert link and read the
+description itself. It could technically; it will not. Fetching those pages
+programmatically is scraping — against LinkedIn's terms, and the risk we
+already recorded on 2026-09-07 is not theoretical: IP-level blocking, and his
+own account getting restricted in the middle of an active job search. The
+line that holds: automating the clicking is fine, automating the reading is
+not.
+
+`jobagent read-postings` walks the reviewed leads that have no description,
+opens each in HIS browser (where he is already logged in), and saves whatever
+he pastes to `private/postings/{source}_{job_id}.txt`. `tailor` then picks
+that file up automatically when the stored description is empty — `--posting`
+is only needed for a file kept somewhere else. Defaults to `worth_applying`,
+`--limit 10` a sitting, `--verdict unsure` to work the maybes.
+
+Verified end to end on Blend's Data Engineer (SQL-focused): "title only,
+open the URL yourself" became "Resume: D_Eng (auto-picked), 83.3% coverage
+over 6 named technologies, NOT YOURS: dbt".
+
+Bug caught before it shipped: the first version used `sys.stdin.read()`,
+which consumes to EOF — so after the first paste every later read returns ""
+and jobs 2..N would have silently skipped, reporting success. Replaced with a
+sentinel-line reader (`END`) that behaves identically in a terminal and a
+pipe, which is also what made it testable from the shell.
