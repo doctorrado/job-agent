@@ -624,3 +624,85 @@ the entry is skipped rather than saved. Forgetting to copy would otherwise
 file the previous posting's text under this job's name — silently wrong, and
 wrong in the direction that puts the wrong role's keywords on a resume.
 Anything under 200 chars is refused too.
+
+## 2026-09-10 (Phase 5: application tracking + answer bank, and the ATS probe)
+
+Context for both: Andres pulled the project back to its actual goal, which is
+not "a better ranked list" — it is that he does as little as possible, up to
+clicking Submit himself. Workday is explicitly non-negotiable (most postings
+route there to apply), and "Workday is a nightmare" was the wrong framing:
+Workday is ONE product with `data-automation-id` attributes in its DOM,
+which makes it more automatable than a bespoke careers page, not less.
+
+### `discover-companies` — the probe
+
+Earlier discovery searched the open web and guessed company names. This works
+the other way round: the LinkedIn alerts already name 542 companies hiring his
+roles in his country, so probe THOSE against the six documented public board
+APIs. Relevance is established before the first request.
+
+Live result: 21 of 150 probed run a real public board (~14%, double the 7%
+estimated from the first hand-run sample of 30).
+
+**Two false-positive classes found on live data, both now handled:**
+
+1. *Trial accounts.* Accenture and EY both answer 200 on Recruitee with the
+   identical "Senior Marketer (Sample)" placeholder. `looks_real` requires 4+
+   jobs and no placeholder markers.
+2. *Truncated slugs.* The `words[0]` fallback matched "Inter Rapidisimo"
+   (Bogota logistics) to **Inter**, a Brazilian bank with 136 Portuguese jobs
+   and none in Colombia; "Ultimate Jet Vacations" to a US HVAC contractor;
+   "Mas Empleo ANDI" to the same HVAC board; "Automation Anywhere" to a Dutch
+   Recruitee account. Five of the 21 hits were wrong — a 24% error rate that
+   would have flooded the bank with HVAC and Dutch sales-admin jobs.
+   Fix: the first-word slug now requires **location corroboration** — the
+   board must post somewhere we have actually seen that company hire. Verified
+   on live data: all five rejected, Experian (5 real Colombia openings),
+   Skydropx, Twilio, Blend, PayJoy and Factored all still found. Esri Colombia
+   is also rejected, correctly — Esri's global board has 0 Colombia jobs, so
+   it was never going to help.
+
+Also: Workable rate-limited (429) a 120-company run into uselessness. The
+probe now backs off after 3 rate-limit responses and drops that platform for
+the run. These are free endpoints run for employers' benefit, not ours.
+
+### LinkedIn alert parser: two email variants shifted every field
+
+"Your job alert has been created: X in Colombia." and "A new job matches your
+preferences." were unrecognised chrome. The parser reads title/company/
+location positionally, so one unrecognised leading line shifts everything: six
+stored jobs had "You'll receive notifications when new jobs are posted..." as
+their EMPLOYER, with the real job title in the location column. Now filtered
+by `_NOISE_LINE` (note U+2019, the emails use a curly apostrophe). A re-fetch
+repairs the affected rows because source_job_id was never wrong.
+
+### Phase 5 tables
+
+`Application` (one per posting actually applied to) and `ApplicationAnswer`
+(the answer bank), both new tables rather than columns, for the same reason
+JobReview is: create_all can add a table but cannot ALTER one, and these are
+different facts with different lifetimes — a verdict is written once, a status
+changes for months.
+
+`applied_via` is deliberately separate from `source`. Where a job is LISTED
+and where you APPLY are different systems: a Greenhouse listing routinely
+hands you to Workday. Recording which is what makes Phase 7 targetable.
+
+### The answer bank is the point, and it is late rather than early
+
+Andres's own framing, and it is right: the Selenium half of Phase 7 is
+mechanical; knowing WHAT to type is the actual intelligence, and it cannot be
+invented — it only accumulates from real questions really answered. He has
+applied to ~360 jobs and none of that is recovered. What is recoverable is the
+next ten.
+
+`normalise_question` collapses phrasings so "How many years of experience do
+you have with Python?" and "Years of Python experience?" hit one banked
+answer (filler words dropped, remainder sorted).
+
+**Demographic and EEO questions are refused outright**, not merely
+un-auto-answered. CLAUDE.md forbids auto-answering them, so the bank declines
+to hold them at all — an empty table cannot tempt a future form-filler.
+Bug caught by its own test: `\bdisab\b` cannot match "disability", because
+the trailing word boundary fails mid-word. Every EEO question was passing
+through. These are prefix patterns now, with no trailing \b.

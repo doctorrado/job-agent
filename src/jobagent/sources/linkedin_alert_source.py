@@ -38,7 +38,21 @@ ALERT_SENDER = "jobalerts-noreply@linkedin.com"
 _SEPARATOR = re.compile(r"^-{20,}\s*$", re.M)
 _VIEW_JOB = re.compile(r"View job:\s*(\S+)")
 _JOB_ID = re.compile(r"/jobs/view/(\d+)")
-_HEADER_LINE = re.compile(r"^(your job alert for|new jobs match your preferences)", re.I)
+# Lines that are digest chrome, not job fields. Missing a variant is not a
+# cosmetic bug: the parser reads title/company/location positionally, so one
+# unrecognised leading line shifts every field by one and the footer sentence
+# lands in `company`. Six stored jobs had "You'll receive notifications when
+# new jobs are posted..." as their employer. Note the curly apostrophe — the
+# emails use U+2019, not an ASCII quote.
+_NOISE_LINE = re.compile(
+    r"^("
+    r"your job alert (for|has been created)|"
+    r"new jobs match your preferences|"
+    r"a new job matches your preferences|"
+    r"you[’']ll receive notifications"
+    r")",
+    re.I,
+)
 
 
 class LinkedInAlertSource(JobSource):
@@ -99,9 +113,11 @@ def _parse_blocks(text: str) -> list[dict[str, str]]:
         id_match = _JOB_ID.search(url_match.group(1))
         if not id_match:
             continue
-        lines = [line.strip() for line in chunk.splitlines() if line.strip()]
-        while lines and _HEADER_LINE.match(lines[0]):
-            lines.pop(0)  # only the first block carries the digest header
+        lines = [
+            line.strip()
+            for line in chunk.splitlines()
+            if line.strip() and not _NOISE_LINE.match(line.strip())
+        ]
         if len(lines) < 3:
             continue
         blocks.append(

@@ -4,27 +4,40 @@ from __future__ import annotations
 
 import html
 import json
+import logging
 import re
 import shutil
 import subprocess
 import sys
 import webbrowser
+from collections import Counter
+from datetime import date
 from pathlib import Path
 
+import httpx
 import typer
+import yaml
 
 from jobagent import __version__
 from jobagent.config import get_settings, load_profile
+from jobagent.discovery.ats_probe import Candidate, ProbeState, is_probeable, probe_company
 from jobagent.logging import configure_logging, get_logger
 from jobagent.pipeline.dedupe import normalize_company, normalize_text
-from jobagent.pipeline.fetch import run_fetch
+from jobagent.pipeline.fetch import COMPANIES_PATH, run_fetch
 from jobagent.pipeline.score import score_job
 from jobagent.resumes.loader import docx_lines, load_resumes
 from jobagent.resumes.select import build_weights, choose_resume
 from jobagent.resumes.tailor import analyse_gaps, output_path, page_count, tailor_docx
 from jobagent.sources.jooble_source import LIFETIME_LIMIT, JoobleSource, read_usage
 from jobagent.storage.db import make_session_factory
-from jobagent.storage.repository import JobRepository, ReviewRepository
+from jobagent.storage.repository import (
+    STATUSES,
+    AnswerRepository,
+    ApplicationRepository,
+    JobRepository,
+    ReviewRepository,
+    is_sensitive,
+)
 
 app = typer.Typer(help="AI-powered job search and application assistant.")
 log = get_logger(__name__)
@@ -630,3 +643,228 @@ def read_postings(
         f"Saved {saved}. `jobagent tailor --source X --job-id Y` now picks these up "
         "automatically — no --posting needed."
     )
+
+
+@app.command("discover-companies")
+def discover_companies(
+    min_score: int = typer.Option(
+        40, help="Only probe companies with at least one job scoring this high"
+    ),
+    limit: int = typer.Option(60, help="How many companies to probe in one run"),
+    write: bool = typer.Option(
+        False, "--write", help="Append verified boards to config/companies.yaml"
+    ),
+) -> None:
+    """Probe companies from the job bank for a public ATS board.
+
+    The LinkedIn alerts already name hundreds of companies hiring your roles
+    in your country. Any of them running a Greenhouse/Lever/Ashby board can be
+    fetched properly — full descriptions, no copying by hand — so this checks
+    which ones do and adds them to the fetch list.
+    """
+    settings = get_settings()
+    profile = load_profile(settings.profile_path)
+    jobs = JobRepository(make_session_factory(settings.db_path)()).all()
+
+    known = {
+        entry["name"].strip().lower()
+        for entry in (yaml.safe_load(COMPANIES_PATH.read_text(encoding="utf-8")) or [])
+    }
+
+    best: dict[str, int] = {}
+    seen_locations: dict[str, set[str]] = {}
+    for job in jobs:
+        result = score_job(job, profile)
+        score = result.total if result.eligible else 0
+        best[job.company] = max(best.get(job.company, 0), score)
+        if job.location:
+            seen_locations.setdefault(job.company, set()).add(job.location)
+
+    candidates = sorted(
+        (
+            company
+            for company, score in best.items()
+            if score >= min_score
+            and company.strip().lower() not in known
+            and is_probeable(company)
+        ),
+        key=lambda c: -best[c],
+    )[:limit]
+
+    typer.echo(
+        f"{len(best)} companies in the bank, {len(known)} already fetched. "
+        f"Probing {len(candidates)} (best job scoring {min_score}+).\n"
+    )
+
+    # httpx logs every request at INFO; a 120-company run is thousands of
+    # lines that bury the handful of hits.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+
+    found: list[Candidate] = []
+    state = ProbeState()
+    with httpx.Client(timeout=8.0, follow_redirects=True) as client:
+        for index, company in enumerate(candidates, start=1):
+            hit = probe_company(
+                client, company, state, known_locations=seen_locations.get(company, set())
+            )
+            if hit is None:
+                continue
+            found.append(hit)
+            typer.echo(
+                f"  [{index}/{len(candidates)}] {hit.company} -> {hit.platform} "
+                f"({hit.slug}, {hit.job_count} jobs)"
+            )
+            typer.echo(f"        e.g. {', '.join(hit.sample_titles)}")
+
+    if state.disabled:
+        typer.echo(f"\n(rate-limited, skipped: {', '.join(sorted(state.disabled))})")
+    typer.echo(f"\n{len(found)} of {len(candidates)} run a public board.")
+    if not found:
+        return
+    if not write:
+        typer.echo("Re-run with --write to add them to config/companies.yaml.")
+        return
+
+    lines = [
+        f"# Found by probing companies already in the job bank — {date.today().isoformat()}",
+    ]
+    for hit in found:
+        lines.append(f"- name: {hit.company}")
+        lines.append(f"  platform: {hit.platform}")
+        lines.append(f"  slug: {hit.slug}")
+    with COMPANIES_PATH.open("a", encoding="utf-8") as handle:
+        handle.write("\n" + "\n".join(lines) + "\n")
+    typer.echo(f"Appended {len(found)} to {COMPANIES_PATH}. Run `jobagent fetch` to pull them.")
+
+
+@app.command("apply")
+def apply_command(
+    source: str = typer.Option(..., help="Job source, e.g. greenhouse"),
+    job_id: str = typer.Option(..., help="source_job_id of the posting"),
+    resume: str | None = typer.Option(None, help="Which resume you sent"),
+    via: str | None = typer.Option(
+        None, help="Where you actually applied: workday, greenhouse, lever, email, ..."
+    ),
+    note: str = typer.Option("", help="Anything worth remembering"),
+) -> None:
+    """Record that you applied to a posting."""
+    settings = get_settings()
+    session = make_session_factory(settings.db_path)()
+    job = next(
+        (
+            j
+            for j in JobRepository(session).all()
+            if j.source == source and j.source_job_id == job_id
+        ),
+        None,
+    )
+    if job is None:
+        typer.echo(f"No stored job {source}:{job_id}")
+        raise typer.Exit(1)
+
+    applications = ApplicationRepository(session)
+    if not applications.record(
+        source=source,
+        source_job_id=job_id,
+        company=job.company,
+        title=job.title,
+        url=str(job.url),
+        resume_used=resume,
+        applied_via=via,
+        notes=note,
+    ):
+        typer.echo(f"Already logged as applied: {job.company} — {job.title}")
+        raise typer.Exit(1)
+
+    typer.echo(f"Logged: {job.company} — {job.title}")
+    typer.echo(f"Total applications: {applications.count()}")
+    typer.echo(
+        "\nWhat did the form ask that isn't on your resume? "
+        "`jobagent remember` banks it for next time."
+    )
+
+
+@app.command("applications")
+def applications_command(
+    status: str | None = typer.Option(None, help=f"Filter: {', '.join(STATUSES)}"),
+) -> None:
+    """List what you've applied to and where each one stands."""
+    settings = get_settings()
+    rows = ApplicationRepository(make_session_factory(settings.db_path)()).all(status)
+    if not rows:
+        typer.echo("Nothing logged yet." if not status else f"Nothing with status {status!r}.")
+        return
+
+    counts = Counter(r.status for r in rows)
+    typer.echo("  ".join(f"{name}: {n}" for name, n in counts.most_common()) + "\n")
+    for row in rows:
+        via = f" via {row.applied_via}" if row.applied_via else ""
+        used = f" [{row.resume_used}]" if row.resume_used else ""
+        typer.echo(
+            f"  {row.applied_at:%Y-%m-%d}  {row.status:<10} {row.company[:26]:26} "
+            f"{row.title[:38]:38}{used}{via}"
+        )
+
+
+@app.command("set-status")
+def set_status_command(
+    source: str = typer.Option(..., help="Job source"),
+    job_id: str = typer.Option(..., help="source_job_id"),
+    status: str = typer.Option(..., help=f"One of: {', '.join(STATUSES)}"),
+    note: str = typer.Option("", help="What happened"),
+) -> None:
+    """Move an application along: screening, interview, offer, rejected..."""
+    settings = get_settings()
+    applications = ApplicationRepository(make_session_factory(settings.db_path)())
+    try:
+        moved = applications.set_status(source, job_id, status, note)
+    except ValueError as exc:
+        typer.echo(str(exc))
+        raise typer.Exit(1) from exc
+    if not moved:
+        typer.echo(f"No application logged for {source}:{job_id}")
+        raise typer.Exit(1)
+    typer.echo(f"{source}:{job_id} -> {status}")
+
+
+@app.command("remember")
+def remember_command(
+    question: str = typer.Option(..., "--question", "-q", help="What the form asked"),
+    answer: str = typer.Option(..., "--answer", "-a", help="What you answered"),
+    category: str = typer.Option("other", help="e.g. experience, logistics, authorization"),
+) -> None:
+    """Bank an application question and your answer, for reuse.
+
+    Every form asks the same handful of things. Banking an answer once means
+    the next application — and eventually the form-filler — already knows it.
+    Demographic and EEO questions are refused on purpose.
+    """
+    settings = get_settings()
+    answers = AnswerRepository(make_session_factory(settings.db_path)())
+    if is_sensitive(question):
+        typer.echo(
+            "Refused: that looks like a demographic or sensitive question.\n"
+            "Those are never banked and never auto-answered — answer it yourself."
+        )
+        raise typer.Exit(1)
+    if answers.remember(question, answer, category):
+        typer.echo(f"Banked. {answers.count()} answers on file.")
+    else:
+        existing = answers.lookup(question)
+        typer.echo(f"Already knew that one: {existing.answer!r} (asked {existing.times_used}x)")
+
+
+@app.command("answers")
+def answers_command(
+    search: str = typer.Argument("", help="Filter by text in the question or answer"),
+) -> None:
+    """Show the answer bank."""
+    settings = get_settings()
+    answers = AnswerRepository(make_session_factory(settings.db_path)())
+    rows = answers.search(search)
+    if not rows:
+        typer.echo("Answer bank is empty. `jobagent remember -q ... -a ...` fills it.")
+        return
+    for row in rows:
+        typer.echo(f"  [{row.category}] {row.question}")
+        typer.echo(f"      -> {row.answer}   (asked {row.times_used}x)")

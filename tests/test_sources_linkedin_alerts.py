@@ -53,3 +53,27 @@ def test_parses_every_job_block():
 def test_footer_without_a_job_link_is_ignored():
     jobs = parse_alert_email(_message())
     assert all("search-results" not in str(job.url) for job in jobs)
+
+
+ALERT_CONFIRMATION = """Your job alert has been created: Data Analyst in Colombia.
+You’ll receive notifications when new jobs are posted that match your search preferences.
+
+Business Intelligence Analyst
+Kala
+Bogota, D.C., Capital District, Colombia
+View job: https://www.linkedin.com/comm/jobs/view/4457399996/?trk=eml
+--------------------------------------------------
+"""
+
+
+def test_confirmation_chrome_does_not_shift_the_fields():
+    """Six stored jobs had "You'll receive notifications when new jobs are
+    posted..." as their employer, because the parser reads title/company/
+    location positionally and did not recognise these two lines."""
+    from jobagent.sources.linkedin_alert_source import _parse_blocks
+
+    blocks = _parse_blocks(ALERT_CONFIRMATION)
+    assert len(blocks) == 1
+    assert blocks[0]["title"] == "Business Intelligence Analyst"
+    assert blocks[0]["company"] == "Kala"
+    assert blocks[0]["location"].startswith("Bogota")
