@@ -463,3 +463,13 @@ match none of his target roles.
   fetching the posting body, i.e. scraping, which stays ruled out.
 - `tailor` does not consult the score. It answers "which resume, what gap",
   not "should you bother".
+
+### Robustness: company boards now fail independently (2026-09-10)
+
+A routine `fetch` hit a ReadTimeout on one of the 21 boards in
+companies.yaml and lost ALL of them — greenhouse + lever, ~1,920 stored jobs,
+left unrefreshed. `fetch_all()` already skips a failing SOURCE; that same rule
+just was not applied one level down, inside CompanyBoardsSource's loop over
+companies. Now wrapped per company with a `company_board_failed` warning.
+The very next run pulled 1,851 jobs cleanly, so the timeout was transient —
+but 66% of the bank should never hang on one company's slow response.

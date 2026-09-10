@@ -14,8 +14,11 @@ from pathlib import Path
 import httpx
 import yaml
 
+from jobagent.logging import get_logger
 from jobagent.models.job import Job
 from jobagent.sources.base import JobSource
+
+log = get_logger(__name__)
 
 
 class CompanyBoardsSource(JobSource):
@@ -32,7 +35,19 @@ class CompanyBoardsSource(JobSource):
             fetcher = _FETCHERS.get(entry["platform"])
             if fetcher is None:
                 continue  # unknown platform in the config — skip, don't crash the whole run
-            jobs.extend(fetcher(self._client, entry["slug"], entry["name"]))
+            try:
+                jobs.extend(fetcher(self._client, entry["slug"], entry["name"]))
+            except (httpx.HTTPError, ValueError, KeyError) as exc:
+                # One unreachable or slow board must not cost us the other 20.
+                # fetch_all() already skips a failing SOURCE; this is the same
+                # rule one level down. A single company timing out used to
+                # abort the whole run, leaving ~1,900 stored jobs unrefreshed.
+                log.warning(
+                    "company_board_failed",
+                    company=entry["name"],
+                    platform=entry["platform"],
+                    error=str(exc),
+                )
         return jobs
 
 

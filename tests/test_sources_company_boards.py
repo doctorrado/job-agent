@@ -55,3 +55,36 @@ def test_company_boards_source_maps_both_platforms(tmp_path):
     assert lv_job.company == "Beta"
     assert lv_job.title == "Data Engineer"
     assert lv_job.employment_type == "Full-time"
+
+
+def test_one_failing_board_does_not_lose_the_others(tmp_path):
+    """A slow or unreachable company must not abort the whole run."""
+    config = tmp_path / "companies.yaml"
+    config.write_text(
+        "- name: Broken\n  platform: greenhouse\n  slug: broken\n"
+        "- name: Working\n  platform: greenhouse\n  slug: working\n",
+        encoding="utf-8",
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "broken" in str(request.url):
+            raise httpx.ReadTimeout("too slow", request=request)
+        return httpx.Response(
+            200,
+            json={
+                "jobs": [
+                    {
+                        "id": 1,
+                        "title": "Data Analyst",
+                        "absolute_url": "https://example.com/1",
+                        "location": {"name": "Bogota, Colombia"},
+                        "updated_at": "2026-09-01T00:00:00Z",
+                        "content": "SQL and Python",
+                    }
+                ]
+            },
+        )
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    jobs = CompanyBoardsSource(config, client=client).fetch()
+    assert [j.company for j in jobs] == ["Working"]
