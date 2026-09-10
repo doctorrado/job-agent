@@ -160,6 +160,11 @@ def _readable(text: str, limit: int) -> str:
     return re.sub(r"\s+", " ", stripped).strip()[:limit]
 
 
+# Matches _MIN_DESCRIPTION_CHARS in scoring: below this there is no posting
+# body to reason about, only a title, company and location.
+_MIN_EVIDENCE_CHARS = 200
+
+
 @app.command("review-queue")
 def review_queue(
     export: str = typer.Option("data/to_review.json", help="Where to write the batch"),
@@ -208,6 +213,14 @@ def review_queue(
             "Fill in 'verdict' for each job: worth_applying | unsure | not_a_fit. "
             "Add a one-line 'reasoning'. Lean towards 'unsure' rather than "
             "'not_a_fit' whenever there is a real argument for applying. "
+            "Check the 'evidence' field and judge accordingly. 'full posting' "
+            "means decide the fit properly. 'title only' means the source is a "
+            "job-alert email that carries no description at all, so seniority "
+            "and stack are unknowable — judge it as TRIAGE: is this company, "
+            "title and location worth opening the link for? A recognisable "
+            "employer with a target title in Colombia is 'worth_applying' even "
+            "with no description; reserve 'unsure' for titles whose level or "
+            "field is genuinely ambiguous, not for every description-less row. "
             "One verdict covers every listing of the same opening: "
             "'also_posted_in' lists the other locations and apply links for "
             "the same role, so judge it once. "
@@ -224,6 +237,11 @@ def review_queue(
                 "score": r.total,
                 "breakdown": r.breakdown,
                 "matched_skills": r.matched_skills,
+                "evidence": (
+                    "full posting"
+                    if len((r.job.description or "").strip()) >= _MIN_EVIDENCE_CHARS
+                    else "title only"
+                ),
                 "description": _readable(r.job.description, max_description),
                 "also_posted_in": [
                     {
@@ -249,6 +267,12 @@ def review_queue(
         f"{duplicates} repeat listings folded in); wrote the top {len(batch)} "
         f"to {export_path}."
     )
+    titles_only = len([r for r in batch if len((r.job.description or "").strip()) < 200])
+    if titles_only:
+        typer.echo(
+            f"{titles_only} of those carry no description (job-alert email) — "
+            "the batch marks them 'title only' so they are triaged, not guessed at."
+        )
 
 
 @app.command("import-reviews")
