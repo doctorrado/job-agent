@@ -90,7 +90,33 @@ def _fetch_lever(client: httpx.Client, slug: str, company: str) -> list[Job]:
     ]
 
 
-_FETCHERS = {"greenhouse": _fetch_greenhouse, "lever": _fetch_lever}
+def _fetch_ashby(client: httpx.Client, slug: str, company: str) -> list[Job]:
+    """Ashby's public job-board API. Returns descriptionPlain, so postings
+    arrive as clean text with no HTML stripping needed."""
+    r = client.get(f"https://api.ashbyhq.com/posting-api/job-board/{slug}")
+    r.raise_for_status()
+    return [
+        Job(
+            source="ashby",
+            source_job_id=j["id"],
+            url=j["jobUrl"],
+            title=j["title"],
+            company=company,
+            location=j.get("location"),
+            description=j.get("descriptionPlain", ""),
+            employment_type=j.get("employmentType"),
+            posted_date=_parse_iso_date(j.get("publishedAt")),
+        )
+        for j in r.json().get("jobs", [])
+        if j.get("isListed", True)
+    ]
+
+
+_FETCHERS = {
+    "greenhouse": _fetch_greenhouse,
+    "lever": _fetch_lever,
+    "ashby": _fetch_ashby,
+}
 
 
 def _parse_iso_date(value: str | None) -> date | None:

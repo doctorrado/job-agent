@@ -573,3 +573,54 @@ which consumes to EOF — so after the first paste every later read returns ""
 and jobs 2..N would have silently skipped, reporting success. Replaced with a
 sentinel-line reader (`END`) that behaves identically in a terminal and a
 pipe, which is also what made it testable from the shell.
+
+### Company discovery aimed at his OWN alerts (2026-09-10)
+
+Previous discovery passes searched generically (`site:boards.greenhouse.io` +
+role keywords). This pass instead took the 398 companies that actually appear
+in Andres's LinkedIn alerts and probed the top 30 against six public ATS APIs
+(Greenhouse, Lever, Ashby, SmartRecruiters, Recruitee, Workable) with
+generated slug variants. Far better hit rate, because these are companies
+already hiring for his roles in his country.
+
+Verified real, added:
+- **Wizeline** (greenhouse, 31 jobs, 7 in Colombia) — including the
+  `Data Analyst (SQL) | Colombia` posting that was his #1 unreviewed lead and
+  arrived from the alert with NO description. Now carries 3,010 chars.
+- **Nubank** (ashby, 122 jobs) — required adding an Ashby fetcher.
+
+Rejected in the same pass, all returning HTTP 200: Accenture and EY on
+Recruitee (both trial accounts containing the same "Senior Marketer (Sample)"
+placeholder — exactly the signature recorded on 2026-09-08), AgileEngine on
+SmartRecruiters and Bold on Greenhouse (wrong boards, one unrelated US job
+each). A 200 is not a real board; always read the titles.
+
+Ashby added as a third platform in company_boards_source. Its posting API
+returns `descriptionPlain`, so postings arrive as clean text.
+
+Store grew 2,950 -> 3,108.
+
+### A bug that measured out to nothing
+
+Greenhouse stores `content` HTML-escaped (`&lt;p&gt;`), so descriptions sit in
+the database as entity soup, and skill matching reads them raw. Looked like a
+real defect across 1,874 jobs. Measured before fixing: decoding the HTML first
+changes the matched skills on **1 job out of 2,391**, because `\bpython\b`
+matches inside `&gt;Python&lt;` perfectly well. Left alone.
+
+Recording this deliberately as a negative result. The same instinct that
+produced the single-sample Lemon.io diagnosis produced this one; the
+difference is that this time the measurement happened before the change.
+
+### read-postings reads the clipboard
+
+`wl-paste` is present (Wayland), so the flow is now: tab opens, Ctrl+A /
+Ctrl+C on the page, press Enter in the terminal. No pasting into the shell.
+Falls back to `--paste` with the END sentinel where no clipboard tool exists
+(`xclip` and `xsel` are also tried).
+
+Guard worth keeping: if the clipboard is byte-identical to the previous job's,
+the entry is skipped rather than saved. Forgetting to copy would otherwise
+file the previous posting's text under this job's name — silently wrong, and
+wrong in the direction that puts the wrong role's keywords on a resume.
+Anything under 200 chars is refused too.

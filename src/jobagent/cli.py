@@ -5,6 +5,8 @@ from __future__ import annotations
 import html
 import json
 import re
+import shutil
+import subprocess
 import sys
 import webbrowser
 from pathlib import Path
@@ -170,6 +172,24 @@ _MIN_EVIDENCE_CHARS = 200
 def _posting_path(directory: Path, source: str, job_id: str) -> Path:
     """Where a hand-saved posting body lives for one job."""
     return directory / f"{source}_{job_id}.txt"
+
+
+# Ordered by how likely each is to be the right tool for the session type.
+_CLIPBOARD_READERS = (
+    ["wl-paste", "--no-newline"],
+    ["xclip", "-selection", "clipboard", "-o"],
+    ["xsel", "--clipboard", "--output"],
+)
+
+
+def _clipboard_reader() -> list[str] | None:
+    """The first clipboard command available on this machine, if any."""
+    return next((cmd for cmd in _CLIPBOARD_READERS if shutil.which(cmd[0])), None)
+
+
+def _read_clipboard(command: list[str]) -> str:
+    result = subprocess.run(command, capture_output=True, text=True, check=False)
+    return result.stdout if result.returncode == 0 else ""
 
 
 def _read_until_sentinel(sentinel: str = "END") -> str | None:
@@ -520,6 +540,9 @@ def read_postings(
     open_browser: bool = typer.Option(
         True, "--open/--no-open", help="Open each posting in your browser"
     ),
+    clipboard: bool = typer.Option(
+        True, "--clipboard/--paste", help="Read the copied text straight off the clipboard"
+    ),
 ) -> None:
     """Work through job-alert leads that arrived with no description.
 
@@ -552,27 +575,52 @@ def read_postings(
         f"{len(pending)} '{verdict}' leads still need their posting text. "
         f"Doing up to {limit} now.\n"
     )
+    reader = _clipboard_reader() if clipboard else None
+    if clipboard and reader is None:
+        typer.echo("(no clipboard tool found — falling back to pasting)\n")
+
     saved = 0
+    previous = ""
     for job in pending[:limit]:
         typer.echo(f"── {job.company} — {job.title}")
         typer.echo(f"   {job.url}")
         if open_browser:
             webbrowser.open(str(job.url))
-        typer.echo(
-            "   Paste the job description, then type END on its own line.\n"
-            "   (END with nothing above it skips this one, Ctrl-C stops)\n"
-        )
+
         try:
-            body = _read_until_sentinel()
-        except KeyboardInterrupt:
+            if reader:
+                typer.echo("   Select the posting and copy it, then press Enter here.")
+                answer = input("   [Enter=save, s=skip, q=quit] ").strip().lower()
+                if answer == "q":
+                    break
+                if answer == "s":
+                    typer.echo("   skipped\n")
+                    continue
+                body = _read_clipboard(reader)
+                # Forgetting to copy would otherwise file the PREVIOUS job's
+                # text under this job's name — silently wrong, and wrong in
+                # the direction that puts the wrong role on a resume.
+                if body.strip() and body.strip() == previous:
+                    typer.echo("   clipboard unchanged — did the copy work? skipped\n")
+                    continue
+            else:
+                typer.echo(
+                    "   Paste the job description, then type END on its own line.\n"
+                    "   (END with nothing above it skips this one)\n"
+                )
+                read = _read_until_sentinel()
+                if read is None:
+                    typer.echo("\nInput ended.")
+                    break
+                body = read
+        except (KeyboardInterrupt, EOFError):
             typer.echo("\nStopped.")
             break
-        if body is None:  # stdin closed entirely
-            typer.echo("\nInput ended.")
-            break
-        if not body.strip():
-            typer.echo("   skipped\n")
+
+        if len(body.strip()) < _MIN_EVIDENCE_CHARS:
+            typer.echo(f"   only {len(body.strip())} chars — skipped\n")
             continue
+        previous = body.strip()
         destination = _posting_path(settings.postings_dir, job.source, job.source_job_id)
         destination.write_text(body, encoding="utf-8")
         saved += 1
