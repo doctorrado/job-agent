@@ -19,19 +19,40 @@ from __future__ import annotations
 import re
 
 from jobagent.models.job import Job
+from jobagent.pipeline.extract import strip_accents
+
+# Legal-entity suffixes carry no identity: Jooble lists "IQVIA, Inc." where a
+# LinkedIn alert says "IQVIA", and the pair survived dedupe into a review
+# batch as two separate jobs. Accents differ across sources for the same
+# reason ("Bogota, D.C." vs "Bogota, D.C.").
+_COMPANY_SUFFIX = re.compile(
+    r"[\s,]+(inc|llc|ltd|limited|corp|corporation|co|plc|gmbh|"
+    r"s\.?a\.?s?|s\.?a\.?s\.?|sas|srl|s\.?r\.?l|bv|nv|ag|oy|ab)\.?$",
+    re.I,
+)
 
 
 def normalize_text(value: str | None) -> str:
-    """Lowercase and collapse whitespace so "Data Analyst " and
-    "data analyst" compare equal."""
+    """Lowercase, strip accents and collapse whitespace so "Bogota, D.C.",
+    "Bogota, D.C. " and "BOGOTA, D.C." all compare equal."""
     if not value:
         return ""
-    return re.sub(r"\s+", " ", value.strip().lower())
+    return re.sub(r"\s+", " ", strip_accents(value).strip().lower())
+
+
+def normalize_company(value: str | None) -> str:
+    """Company identity with legal-entity suffixes removed."""
+    name = normalize_text(value)
+    previous = None
+    while name != previous:  # "Foo S.A.S. Ltd" needs more than one pass
+        previous = name
+        name = _COMPANY_SUFFIX.sub("", name).strip()
+    return name
 
 
 def fuzzy_key(job: Job) -> str:
     """Cross-source identity: same company + title + location, normalized."""
-    company = normalize_text(job.company)
+    company = normalize_company(job.company)
     title = normalize_text(job.title)
     location = normalize_text(job.location)
     return f"{company}|{title}|{location}"

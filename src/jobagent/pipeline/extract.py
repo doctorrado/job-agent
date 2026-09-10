@@ -193,7 +193,7 @@ def salary_hourly_usd(job: Job) -> float | None:
     return None
 
 
-def _strip_accents(text: str) -> str:
+def strip_accents(text: str) -> str:
     decomposed = unicodedata.normalize("NFKD", text)
     return "".join(char for char in decomposed if not unicodedata.combining(char))
 
@@ -203,11 +203,11 @@ def role_relevance(job: Job, profile: Profile) -> str:
     the candidate is actually targeting? Accent-insensitive so Spanish
     titles match plain-ASCII keywords, and title-only so it works for
     description-less sources like LinkedIn alert emails."""
-    title = _strip_accents(job.title.lower())
+    title = strip_accents(job.title.lower())
     for phrase in profile.role_keywords.primary:
-        if _strip_accents(phrase.lower()) in title:
+        if strip_accents(phrase.lower()) in title:
             return "primary"
     for phrase in profile.role_keywords.secondary:
-        if _strip_accents(phrase.lower()) in title:
+        if strip_accents(phrase.lower()) in title:
             return "secondary"
     return "none"

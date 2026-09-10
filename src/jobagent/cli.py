@@ -12,6 +12,7 @@ import typer
 from jobagent import __version__
 from jobagent.config import get_settings, load_profile
 from jobagent.logging import configure_logging, get_logger
+from jobagent.pipeline.dedupe import normalize_company, normalize_text
 from jobagent.pipeline.fetch import run_fetch
 from jobagent.pipeline.score import score_job
 from jobagent.resumes.loader import docx_lines, load_resumes
@@ -185,13 +186,31 @@ def review_queue(
         if r.eligible and r.job.dedupe_key not in verdicts
     ]
     pending.sort(key=lambda r: r.total, reverse=True)
-    batch = pending[:limit]
+
+    # One real opening often appears several times: Sezzle posts the same
+    # Data Analyst role once per LATAM country, and the same job reaches us
+    # from both Jooble and a LinkedIn alert. Eight of the first forty reviewed
+    # were such pairs. Storage keeps them all (they ARE separate listings with
+    # separate apply links) but a review batch should spend its slots on
+    # distinct openings. Highest score wins, which naturally prefers the
+    # Colombia-located variant; the others ride along so no apply link is lost.
+    collapsed: dict[tuple[str, str], list] = {}
+    for r in pending:
+        collapsed.setdefault(
+            (normalize_company(r.job.company), normalize_text(r.job.title)), []
+        ).append(r)
+    unique = sorted(collapsed.values(), key=lambda g: g[0].total, reverse=True)
+    batch = [group[0] for group in unique[:limit]]
+    variants = {id(group[0]): group[1:] for group in unique[:limit]}
 
     payload = {
         "instructions": (
             "Fill in 'verdict' for each job: worth_applying | unsure | not_a_fit. "
             "Add a one-line 'reasoning'. Lean towards 'unsure' rather than "
             "'not_a_fit' whenever there is a real argument for applying. "
+            "One verdict covers every listing of the same opening: "
+            "'also_posted_in' lists the other locations and apply links for "
+            "the same role, so judge it once. "
             "Then run: jobagent import-reviews <this file>"
         ),
         "jobs": [
@@ -206,6 +225,15 @@ def review_queue(
                 "breakdown": r.breakdown,
                 "matched_skills": r.matched_skills,
                 "description": _readable(r.job.description, max_description),
+                "also_posted_in": [
+                    {
+                        "location": v.job.location,
+                        "source": v.job.source,
+                        "source_job_id": v.job.source_job_id,
+                        "url": str(v.job.url),
+                    }
+                    for v in variants[id(r)]
+                ],
                 "verdict": "",
                 "reasoning": "",
             }
@@ -215,8 +243,11 @@ def review_queue(
     export_path = Path(export)
     export_path.parent.mkdir(parents=True, exist_ok=True)
     export_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    duplicates = len(pending) - len(unique)
     typer.echo(
-        f"{len(pending)} jobs awaiting review; wrote the top {len(batch)} to {export_path}."
+        f"{len(pending)} jobs awaiting review ({len(unique)} distinct openings, "
+        f"{duplicates} repeat listings folded in); wrote the top {len(batch)} "
+        f"to {export_path}."
     )
 
 
@@ -250,6 +281,25 @@ def import_reviews(
     typer.echo(
         f"Recorded {recorded} new verdicts, {skipped} already reviewed, "
         f"{blank} left blank. Total reviewed: {reviews.count()}."
+    )
+
+    # How much is LEFT is the number that actually tells you what to do next,
+    # and until now nothing in the workflow printed it: review-queue announced
+    # it in whichever terminal built the batch, and the reviewing session never
+    # saw it at all. Easy to finish a batch believing it was the whole pool.
+    profile = load_profile(settings.profile_path)
+    jobs = JobRepository(make_session_factory(settings.db_path)()).all()
+    judged = reviews.verdicts()
+    pending = [
+        score_job(j, profile)
+        for j in jobs
+        if j.dedupe_key not in judged
+    ]
+    remaining = [r for r in pending if r.eligible]
+    strong = len([r for r in remaining if r.total >= 60])
+    typer.echo(
+        f"{len(remaining)} eligible jobs still unreviewed ({strong} scoring 60+). "
+        f"Next batch: jobagent review-queue --limit 100"
     )
 
 

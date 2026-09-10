@@ -513,3 +513,36 @@ fetching; scraping the LinkedIn page stays ruled out. Put the files in
 Not tested: the `--posting` flag itself. There are no CLI tests anywhere in
 this project — the convention is to test pipeline functions and drive the CLI
 by hand. Noting the gap rather than pretending otherwise.
+
+### Workflow gap: nothing told Andres how much was left (2026-09-10)
+
+He finished the first 40-job batch believing 40 WAS the eligible pool. Fair
+reading: `review-queue` prints "N jobs awaiting review" in whichever terminal
+built the batch, the reviewing session never sees that line, and
+`import-reviews` — the one command he actually runs — reported only what it
+had just recorded. Real numbers: 2,950 stored, 164 hard-filtered, 2,786
+eligible, 40 reviewed. `import-reviews` now closes with how many eligible
+jobs remain, how many score 60+, and the command for the next batch.
+
+Lesson for anything split across sessions: a number printed in one session is
+not information the user has. Print it where they will act on it.
+
+### Duplicate listings collapsed in review batches
+
+The review session flagged 8 of 40 rows as repeat listings. Two causes:
+
+- `fuzzy_key` used raw company text, so "IQVIA, Inc." (Jooble) and "IQVIA"
+  (LinkedIn alert) were different postings — as were "Bogota, D.C." and
+  "Bogota, D.C.", which differ only by an accent. `normalize_text` now strips
+  accents and `normalize_company` strips legal-entity suffixes (Inc/LLC/SAS/
+  Ltd/...), looping so "Foo S.A.S. Ltd" fully reduces. `_strip_accents` in
+  extract.py was promoted to `strip_accents` and reused rather than copied.
+- Sezzle posts the same Data Analyst role once per LATAM country, which are
+  genuinely separate listings with separate apply links. Storage keeps them
+  all; `review-queue` now groups by (company, title), spends each batch slot
+  on a distinct opening, and carries the other locations along as
+  `also_posted_in` so no apply link is lost. Highest score wins the slot,
+  which naturally prefers the Colombia-located variant.
+
+Across the current pool: 2,746 unreviewed = 2,092 distinct openings + 654
+repeat listings. Batches are ~24% denser.
