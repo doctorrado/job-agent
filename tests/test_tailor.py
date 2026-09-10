@@ -90,3 +90,25 @@ def test_output_path_keeps_in_house_naming(tmp_path):
     # a copy still sitting there un-submitted must not be overwritten
     first.write_bytes(b"")
     assert output_path(source, tmp_path).name == "Andres_Torrado_D_Eng(1).docx"
+
+
+def test_coverage_refuses_to_judge_a_title_only_posting():
+    # LinkedIn alerts carry no description. "Data Analyst-Business
+    # Intelligence" used to yield one covered term and a confident 100%.
+    gaps = analyse_gaps(
+        "Data Analyst-Business Intelligence",
+        "SKILLS Business Intelligence, Power BI, SQL",
+        ["business intelligence", "power bi", "sql"],
+    )
+    assert gaps.asked < 4
+    assert gaps.coverage is None
+
+
+def test_coverage_reports_once_the_posting_names_enough():
+    gaps = analyse_gaps(
+        "We need Python, SQL, Power BI and Airflow experience.",
+        "SKILLS Python, SQL, Power BI",
+        ["python", "sql", "power bi", "airflow"],
+    )
+    assert gaps.asked >= 4
+    assert gaps.coverage == 100.0

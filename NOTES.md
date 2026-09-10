@@ -473,3 +473,43 @@ just was not applied one level down, inside CompanyBoardsSource's loop over
 companies. Now wrapped per company with a `company_board_failed` warning.
 The very next run pulled 1,851 jobs cleanly, so the timeout was transient —
 but 66% of the bank should never hang on one company's slow response.
+
+## 2026-09-10 (first real review batch, and what it exposed)
+
+First 40 jobs reviewed in a separate context-light session, as CLAUDE.md
+intends: 16 worth_applying, 20 unsure, 4 not_a_fit. Running the Phase 4
+pipeline across those 16 immediately found two things.
+
+### coverage reported 100% off a single word
+
+`GapReport.coverage` divided covered+missing by total asked with no floor on
+the denominator. IQVIA's "Data Analyst-Business Intelligence" is a LinkedIn
+alert — title only, zero description — so it yielded exactly one term,
+covered, and reported a confident **100%**. Now `coverage` returns None below
+`_MIN_ASKS_FOR_COVERAGE` (4) and the CLI says how many technologies the
+posting actually named alongside the percentage.
+
+This is the SAME mistake as the `_MIN_DESCRIPTION_CHARS` fix in scoring:
+treating "no evidence" as "good evidence". It was fixed for skill dampening
+in Phase 3 and never applied one step later in the gap report. Worth watching
+for a third instance anywhere a ratio is computed from posting text.
+
+### 11 of the 16 leads had no description at all
+
+LinkedIn alert emails carry a title and a link. Resume selection, gap analysis
+and tailoring all read the description, so for two-thirds of his best leads
+the whole of Phase 4 had nothing to work with — every one auto-picked BPA
+with a "no resume fits this well" warning, which was an artefact of empty
+input, not a real judgment.
+
+Added `jobagent tailor --posting <file>`: copy the real posting body out of
+the browser into a text file and it replaces the empty description. Verified
+on the IQVIA job — went from "only 1 technology named, open the URL yourself"
+to a real resume choice and 81.8% coverage over 11 named technologies.
+Deliberately a manual paste, the same escape-hatch role FileSource plays for
+fetching; scraping the LinkedIn page stays ruled out. Put the files in
+`private/postings/` (already gitignored via `private/`).
+
+Not tested: the `--posting` flag itself. There are no CLI tests anywhere in
+this project — the convention is to test pipeline functions and drive the CLI
+by hand. Noting the gap rather than pretending otherwise.

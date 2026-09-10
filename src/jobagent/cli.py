@@ -299,6 +299,9 @@ def tailor(
     source: str = typer.Option(..., help="Job source, e.g. greenhouse"),
     job_id: str = typer.Option(..., help="source_job_id of the posting"),
     resume: str | None = typer.Option(None, help="Override the auto-picked resume"),
+    posting: str | None = typer.Option(
+        None, help="Text file with the posting body, for sources that carry no description"
+    ),
     write: bool = typer.Option(
         False, "--write", help="Write a tailored copy with skills reordered for this job"
     ),
@@ -327,7 +330,20 @@ def tailor(
         typer.echo(f"No .docx resumes found in {settings.resumes_dir}")
         raise typer.Exit(1)
 
-    job_text = f"{job.title} {job.description}"
+    # LinkedIn alert emails carry a title and a link, nothing else — 11 of the
+    # first 16 jobs Andres marked worth_applying had an empty description, so
+    # resume selection and gap analysis had nothing to read. Copying the real
+    # posting into a text file is the deliberate, ToS-safe way in; scraping
+    # the page is not. Same escape-hatch role FileSource plays for fetching.
+    description = job.description
+    if posting:
+        posting_path = Path(posting)
+        if not posting_path.is_file():
+            typer.echo(f"No such posting file: {posting}")
+            raise typer.Exit(1)
+        description = posting_path.read_text(encoding="utf-8")
+
+    job_text = f"{job.title} {description}"
     if resume:
         chosen = next((r for r in resumes if r.name.lower() == resume.lower()), None)
         if chosen is None:
@@ -351,7 +367,16 @@ def tailor(
     typer.echo(f"{job.company} — {job.title}")
     typer.echo(f"{job.url}\n")
     typer.echo(f"Resume: {chosen.name}  ({note})")
-    typer.echo(f"You can meet {gaps.coverage}% of what this posting asks for.\n")
+    if gaps.coverage is None:
+        typer.echo(
+            f"Not enough posting to judge coverage — it named only {gaps.asked} "
+            "technolog(ies). Open the URL and read it yourself.\n"
+        )
+    else:
+        typer.echo(
+            f"You can meet {gaps.coverage}% of what this posting asks for "
+            f"({gaps.asked} named).\n"
+        )
 
     if gaps.missing:
         typer.echo("SAFE TO ADD — you have these, this resume does not say so:")
