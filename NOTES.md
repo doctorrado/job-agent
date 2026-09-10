@@ -706,3 +706,44 @@ to hold them at all — an empty table cannot tempt a future form-filler.
 Bug caught by its own test: `\bdisab\b` cannot match "disability", because
 the trailing word boundary fails mid-word. Every EEO question was passing
 through. These are prefix patterns now, with no trailing \b.
+
+## Backlog — agreed, not built
+
+Kept here rather than in chat so it survives a new session. Ordered by the
+project's actual goal: Andres does as little as possible, up to clicking
+Submit himself.
+
+1. **Workday form-filling (Phase 7).** Non-negotiable — most postings route
+   there to apply. Workday is ONE product with `data-automation-id`
+   attributes in its DOM, so it is more automatable than a bespoke careers
+   page, not less. Blocked on: a real mapped form (a spike, not a build) and
+   an answer bank worth drawing on. Never auto-submit; pause at CAPTCHA/MFA.
+2. **Answer bank, static tier.** Name, Bogota address, phone, email, login
+   password (via .env, never chat), education, employers, titles, dates,
+   resume bullets. ~80% of any application and buildable today from
+   profile.yaml + candidate_profile.md — no forms needed.
+3. **Years-per-skill in profile.yaml.** Currently 65 skills as a flat list
+   with no years attached. "How many years of X" is the single most common
+   variable question on a form; a years+confidence column answers most of
+   them automatically instead of asking him each time.
+4. **Dashboard (deferred by Andres 2026-09-10, wants it eventually).** A
+   published Artifact: applications and their statuses, the ranked shortlist,
+   the answer bank. The tracker is FOR him — `jobagent applications` printing
+   text is a poor way to see what has stalled across 50 applications. Claude
+   does not need it; it can read the DB.
+5. **`jobagent today`.** One command that says what to do now, instead of him
+   remembering a five-step sequence.
+6. **Run the probe over the remaining ~390 companies**, and re-run it after
+   each fetch as new companies appear in the alerts.
+7. **Bullet reordering** (same safe "same words, different order" property as
+   the skills line). Bullet *rewording* stays with the LLM pass, gated on his
+   approval per bullet.
+
+Deliberately NOT on this list: scraping LinkedIn/Indeed/Glassdoor, and
+Workday's undocumented `/wday/cxs/` endpoint for FETCHING. Applying through
+Workday's own form as a genuine applicant is a different question from
+scraping their job data, and is item 1.
+
+Also worth knowing: `fetch` reads LinkedIn alert emails over IMAP as one of
+its sources — there is no separate command. The window is the last 30 days
+(`since_days`), so a six-week gap between fetches would miss alerts.
