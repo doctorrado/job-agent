@@ -747,3 +747,57 @@ scraping their job data, and is item 1.
 Also worth knowing: `fetch` reads LinkedIn alert emails over IMAP as one of
 its sources — there is no separate command. The window is the last 30 days
 (`since_days`), so a six-week gap between fetches would miss alerts.
+
+## 2026-09-10 (second review batch — and two workflow bugs it exposed)
+
+140 verdicts now recorded (40 + 100). Second batch: 42 worth_applying,
+44 unsure, 14 not_a_fit.
+
+### `review-queue` destroyed a completed review pass
+
+Running `review-queue` overwrites `data/to_review.json` unconditionally. A
+re-export during this session wiped a finished 100-job pass whose verdicts had
+never been imported. They survived only because the reviewing session still
+had them in its scratchpad — pure luck, not design.
+
+`review-queue` now counts verdicts in the target file that are absent from the
+database and refuses to write, naming both ways out (`import-reviews`, or
+`--force` to discard). Verified live: the guard fires and the file is left
+byte-for-byte intact.
+
+Sharpest lesson of the day, and it generalises: a command that overwrites a
+file the user has spent effort filling in must check before clobbering. The
+review loop deliberately spans two sessions, so the file IS the handoff.
+
+### A verdict is about a job, not about a row
+
+Twilio's BI Analyst 2 exists twice — `linkedin_alerts:2811` and
+`greenhouse:3127` — because the same posting reached us from two sources with
+different source_job_ids. Verdicts key on (source, source_job_id), so judging
+one left the other in the queue. Real scale: **35 groups spanning more than
+one source, 13 of them already half-judged**, and it grows as more boards come
+online.
+
+`posting_identity(company, title)` (in dedupe.py, coarser than `fuzzy_key` —
+no location) now excludes any posting whose sibling row has a verdict, in both
+`review-queue` and the `import-reviews` remaining count. Deliberately a
+read-time rule: it does NOT write verdict rows for jobs nobody reviewed.
+
+### Description coverage drives review quality — measured
+
+Four verdicts changed once real JD text arrived, all on the same postings:
+
+| Job | Was | Now | Why |
+|---|---|---|---|
+| N-iX Data Engineer (Snowflake) | unsure | worth_applying | JD asks 1-3+ yrs SQL/Python/Airflow |
+| PALO IT Analista BI | worth_applying | unsure | actually "Semi Senior", ~182 recurring reports |
+| Goodway Global Data Engineer | unsure | not_a_fit | body describes a Senior DE who mentors |
+
+This is the clearest evidence yet for the ATS probe: the LinkedIn alert rows
+produced `unsure`; the same companies' own boards produced confident calls in
+both directions. Twilio's BI Analyst 2 came through the alert as a bare title
+and through Greenhouse as a 10,262-character JD scoring 95.
+
+Two hard gates worth remembering, both found only in JD bodies: Skydropx
+RevOps Data Analyst requires "Portugues C1 o superior", and N-iX DataOps wants
+3+ years of Terraform, dbt and Snowflake.

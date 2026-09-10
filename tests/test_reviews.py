@@ -33,3 +33,33 @@ def test_unknown_verdict_is_rejected(tmp_path):
     reviews = _repo(tmp_path)
     with pytest.raises(ValueError):
         reviews.record("greenhouse", "abc", "maybe_later")
+
+
+def test_unimported_verdicts_are_detected(tmp_path):
+    """A re-export silently wiped a completed 100-job review pass. The guard
+    counts verdicts sitting in a file that never reached the database."""
+    import json
+
+    from jobagent.cli import _unimported_verdicts
+
+    path = tmp_path / "batch.json"
+    path.write_text(
+        json.dumps(
+            {
+                "jobs": [
+                    {"source": "greenhouse", "source_job_id": "1", "verdict": "worth_applying"},
+                    {"source": "greenhouse", "source_job_id": "2", "verdict": "unsure"},
+                    {"source": "greenhouse", "source_job_id": "3", "verdict": ""},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert _unimported_verdicts(path, {}) == 2  # blanks don't count
+    assert _unimported_verdicts(path, {"greenhouse:1": "worth_applying"}) == 1
+    assert _unimported_verdicts(path, {"greenhouse:1": "x", "greenhouse:2": "y"}) == 0
+    assert _unimported_verdicts(tmp_path / "missing.json", {}) == 0
+
+    path.write_text("not json", encoding="utf-8")
+    assert _unimported_verdicts(path, {}) == 0  # unreadable must not block

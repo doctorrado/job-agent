@@ -22,7 +22,7 @@ from jobagent import __version__
 from jobagent.config import get_settings, load_profile
 from jobagent.discovery.ats_probe import Candidate, ProbeState, is_probeable, probe_company
 from jobagent.logging import configure_logging, get_logger
-from jobagent.pipeline.dedupe import normalize_company, normalize_text
+from jobagent.pipeline.dedupe import normalize_company, normalize_text, posting_identity
 from jobagent.pipeline.fetch import COMPANIES_PATH, run_fetch
 from jobagent.pipeline.score import score_job
 from jobagent.resumes.loader import docx_lines, load_resumes
@@ -182,6 +182,24 @@ def _readable(text: str, limit: int) -> str:
 _MIN_EVIDENCE_CHARS = 200
 
 
+def _unimported_verdicts(export_path: Path, verdicts: dict[str, str]) -> int:
+    """Verdicts sitting in an export file that never reached the database."""
+    if not export_path.is_file():
+        return 0
+    try:
+        payload = json.loads(export_path.read_text(encoding="utf-8"))
+    except (ValueError, OSError):
+        return 0
+    return len(
+        [
+            entry
+            for entry in payload.get("jobs", [])
+            if (entry.get("verdict") or "").strip()
+            and f"{entry.get('source')}:{entry.get('source_job_id')}" not in verdicts
+        ]
+    )
+
+
 def _posting_path(directory: Path, source: str, job_id: str) -> Path:
     """Where a hand-saved posting body lives for one job."""
     return directory / f"{source}_{job_id}.txt"
@@ -228,6 +246,9 @@ def review_queue(
     max_description: int = typer.Option(
         1500, help="Truncate descriptions to keep the file readable"
     ),
+    force: bool = typer.Option(
+        False, "--force", help="Overwrite the export even if it holds unimported verdicts"
+    ),
 ) -> None:
     """Export the highest-scoring not-yet-reviewed jobs for a review pass.
 
@@ -240,11 +261,32 @@ def review_queue(
     session = make_session_factory(settings.db_path)()
     verdicts = ReviewRepository(session).verdicts()
 
-    results = [score_job(job, profile) for job in JobRepository(session).all()]
+    # Overwriting this file destroys any verdicts sitting in it that were
+    # never imported. That is not hypothetical: a re-export wiped a completed
+    # 100-job review pass, which only survived because the reviewing session
+    # still had it. Refuse rather than clobber.
+    export_path = Path(export)
+    unimported = _unimported_verdicts(export_path, verdicts)
+    if unimported and not force:
+        typer.echo(
+            f"{export_path} holds {unimported} verdict(s) that were never imported.\n"
+            f"Import them first:  jobagent import-reviews {export_path}\n"
+            f"Or discard them:    jobagent review-queue --force"
+        )
+        raise typer.Exit(1)
+
+    jobs = JobRepository(session).all()
+    judged_postings = {
+        posting_identity(j.company, j.title) for j in jobs if j.dedupe_key in verdicts
+    }
+    results = [score_job(job, profile) for job in jobs]
     pending = [
         r
         for r in results
-        if r.eligible and r.job.dedupe_key not in verdicts
+        if r.eligible
+        and r.job.dedupe_key not in verdicts
+        # A verdict is a judgment about the job, not the row it arrived on.
+        and posting_identity(r.job.company, r.job.title) not in judged_postings
     ]
     pending.sort(key=lambda r: r.total, reverse=True)
 
@@ -314,7 +356,6 @@ def review_queue(
             for r in batch
         ],
     }
-    export_path = Path(export)
     export_path.parent.mkdir(parents=True, exist_ok=True)
     export_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
     duplicates = len(pending) - len(unique)
@@ -370,12 +411,16 @@ def import_reviews(
     profile = load_profile(settings.profile_path)
     jobs = JobRepository(make_session_factory(settings.db_path)()).all()
     judged = reviews.verdicts()
-    pending = [
+    judged_postings = {
+        posting_identity(j.company, j.title) for j in jobs if j.dedupe_key in judged
+    }
+    remaining = [
         score_job(j, profile)
         for j in jobs
         if j.dedupe_key not in judged
+        and posting_identity(j.company, j.title) not in judged_postings
     ]
-    remaining = [r for r in pending if r.eligible]
+    remaining = [r for r in remaining if r.eligible]
     strong = len([r for r in remaining if r.total >= 60])
     typer.echo(
         f"{len(remaining)} eligible jobs still unreviewed ({strong} scoring 60+). "

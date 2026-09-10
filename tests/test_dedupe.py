@@ -53,3 +53,19 @@ def test_suffix_stripping_does_not_eat_a_real_name():
     assert normalize_company("Cisco") == "cisco"
     assert normalize_company("Incube Metrics") == "incube metrics"
     assert normalize_company("Coca Cola") == "coca cola"
+
+
+def test_posting_identity_ignores_source_and_location():
+    """Twilio's BI Analyst 2 arrives from both a LinkedIn alert and Twilio's
+    Greenhouse board. Judging one must not leave the other in the queue."""
+    from jobagent.pipeline.dedupe import posting_identity
+
+    assert posting_identity("Twilio", "Business Intelligence Analyst 2") == posting_identity(
+        "Twilio", "business intelligence analyst 2"
+    )
+    assert posting_identity("IQVIA, Inc.", "Data Analyst") == posting_identity(
+        "IQVIA", "Data Analyst"
+    )
+    assert posting_identity("Twilio", "Data Engineer") != posting_identity(
+        "Twilio", "Data Analyst"
+    )

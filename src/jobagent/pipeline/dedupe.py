@@ -50,6 +50,18 @@ def normalize_company(value: str | None) -> str:
     return name
 
 
+def posting_identity(company: str | None, title: str | None) -> str:
+    """Identity of a real-world opening, ignoring source and location.
+
+    Coarser than fuzzy_key on purpose. A verdict is a judgment about a JOB,
+    not about a row: Twilio's BI Analyst 2 arrives from both a LinkedIn alert
+    and Twilio's Greenhouse board with different source_job_ids, and judging
+    one used to leave the other sitting in the queue. 35 such groups existed
+    across 3,985 jobs, 13 of them already half-judged.
+    """
+    return f"{normalize_company(company)}|{normalize_text(title)}"
+
+
 def fuzzy_key(job: Job) -> str:
     """Cross-source identity: same company + title + location, normalized."""
     company = normalize_company(job.company)
