@@ -24,6 +24,26 @@ _JUNIOR_WORDS = re.compile(
 )
 _YEARS_PATTERN = re.compile(r"(\d+)\s*(?:\+|-\s*\d+)?\s*years?", re.I)
 
+# Titles that mean "student placement". Andres graduated in December 2025, so
+# these are a step backwards regardless of how well the skills line up — they
+# are hard-excluded, not merely downweighted. Word boundaries matter: a bare
+# "intern" substring would also swallow "Internal Audit" and "International".
+_INTERNSHIP_WORDS = re.compile(
+    r"\b(intern|interns|internship|practicante|pasant[ií]as?|becario|co-?op)\b", re.I
+)
+
+# Agency and marketplace postings often end with a catch-all paragraph listing
+# every technology the company recruits for across ALL its roles. Lemon.io's
+# "NOT YOUR TECH STACK?" block names ~60 of them, which handed a Senior Data
+# Engineer posting free matches on Java, PHP, JavaScript and Data Analysis and
+# maxed out its skills score. Everything from such a marker on is boilerplate,
+# not this job's requirements. See NOTES.md (2026-09-10).
+_BOILERPLATE_MARKER = re.compile(
+    r"(not your tech stack|other (?:roles|positions|openings) we|"
+    r"we (?:also )?hire for|if this (?:role|position) is not)",
+    re.I,
+)
+
 # Deliberately specific, actionable phrases only — NOT a bare "united states"
 # mention, which would also match harmless company-background sentences like
 # "Sezzle operates in the United States and Canada." Real examples that drove
@@ -75,17 +95,39 @@ _FULL_TIME_HOURS_PER_YEAR = 2080  # 40 hr/week x 52 weeks, for annual -> hourly 
 
 
 def matched_skills(job: Job, profile: Profile) -> list[str]:
-    """Which of the candidate's own skills are mentioned in this posting."""
-    text = f"{job.title} {job.description}".lower()
+    """Which of the candidate's own skills are mentioned in this posting.
+
+    Reads only the posting's own requirements, so a trailing "we also hire
+    for..." tech list cannot inflate the match count.
+    """
+    text = f"{job.title} {own_requirements(job)}".lower()
     return [
         skill for skill in profile.skills if re.search(rf"\b{re.escape(skill.lower())}\b", text)
     ]
 
 
+def requires_internship(job: Job) -> bool:
+    """True when the title marks this as a student placement."""
+    return _INTERNSHIP_WORDS.search(job.title) is not None
+
+
+def own_requirements(job: Job) -> str:
+    """The description with any trailing catch-all tech list removed."""
+    match = _BOILERPLATE_MARKER.search(job.description)
+    return job.description[: match.start()] if match else job.description
+
+
 def years_required(job: Job) -> int | None:
-    """Lowest number of years mentioned near an experience requirement."""
-    match = _YEARS_PATTERN.search(job.description)
-    return int(match.group(1)) if match else None
+    """Lowest number of years mentioned near an experience requirement.
+
+    Lowest, not first: a posting listing "5+ years as a Data Engineer" and
+    "2+ years with Databricks" is gated by the role requirement, but which of
+    the two appears first is an accident of how the bullets were ordered.
+    Taking the lowest keeps this generous, and the senior-title check in
+    scoring catches the postings where that generosity would be wrong.
+    """
+    years = [int(m.group(1)) for m in _YEARS_PATTERN.finditer(own_requirements(job))]
+    return min(years) if years else None
 
 
 def detect_seniority(job: Job) -> Seniority:

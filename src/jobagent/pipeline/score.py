@@ -22,6 +22,7 @@ from jobagent.pipeline.extract import (
     detect_seniority,
     matched_skills,
     remote_scope,
+    requires_internship,
     requires_us_work_authorization,
     role_relevance,
     salary_hourly_usd,
@@ -39,6 +40,22 @@ _SKILL_MATCH_CAP = 6
 
 _ROLE_POINTS = {"primary": 20, "secondary": 12, "none": 0}
 
+# Multiplicative penalties for facts that undermine a posting wholesale rather
+# than costing it points in one category. Real measurement on 2,700 stored jobs
+# drove these: with category points alone, 36 of the top 100 were on-site roles
+# in cities Andres cannot work in (Doha, Bengaluru, San Francisco) sitting at
+# 80/100 — ABOVE genuine Bogota roles at 75 — and 12 more matched none of his
+# target roles at all. Losing 15 of 20 location points was not enough; the
+# other four categories carried them. See NOTES.md (2026-09-10).
+_NO_SKILLS_DAMPING = 0.5
+_WRONG_PLACE_DAMPING = 0.6
+_OFF_ROLE_DAMPING = 0.6
+# ...but an unfamiliar title is only weak evidence, and real skill overlap
+# outvotes it. "Dev Python (PySpark/Airflow/PostgreSQL) - Remoto" in Colombia
+# matches no role keyword yet names three of Andres's skills in the title
+# alone; damping it to 36 was wrong. Half the skill cap is the threshold.
+_OFF_ROLE_SKILL_OVERRIDE = _SKILL_MATCH_CAP // 2
+
 
 
 @dataclass
@@ -51,8 +68,11 @@ class ScoreResult:
     matched_skills: list[str] = field(default_factory=list)
     salary_monthly_cop: int | None = None
     salary_hourly_usd: float | None = None
-    salary_hourly_usd: float | None = None
-    dampened: bool = False
+    damping_reasons: list[str] = field(default_factory=list)
+
+    @property
+    def dampened(self) -> bool:
+        return bool(self.damping_reasons)
 
 
 
@@ -60,6 +80,11 @@ def score_job(job: Job, profile: Profile) -> ScoreResult:
     if requires_us_work_authorization(job) and not profile.work_authorization.us_authorized:
         return ScoreResult(
             job=job, eligible=False, ineligible_reason="requires US work authorization"
+        )
+
+    if requires_internship(job):
+        return ScoreResult(
+            job=job, eligible=False, ineligible_reason="internship / student placement"
         )
 
     salary_cop = salary_monthly_cop(job)
@@ -79,9 +104,10 @@ def score_job(job: Job, profile: Profile) -> ScoreResult:
     skills = matched_skills(job, profile)
     skill_points = round(min(len(skills), _SKILL_MATCH_CAP) / _SKILL_MATCH_CAP * 30)
 
+    relevance = role_relevance(job, profile)
     breakdown = {
         "skills": skill_points,
-        "role": _ROLE_POINTS[role_relevance(job, profile)],
+        "role": _ROLE_POINTS[relevance],
         "seniority": _score_seniority(job, profile),
         "location": _score_location(job, profile),
         "salary": _score_salary(salary_cop, hourly_usd, profile),
@@ -93,8 +119,19 @@ def score_job(job: Job, profile: Profile) -> ScoreResult:
     # Colombia-based roles this project exists to find. Same "never assume"
     # principle as undisclosed salary.
     has_description = len(job.description.strip()) >= _MIN_DESCRIPTION_CHARS
-    dampening = 0.5 if (not skills and has_description) else 1.0
-    total = round(sum(breakdown.values()) * dampening)
+
+    damping = 1.0
+    reasons: list[str] = []
+    if not skills and has_description:
+        damping *= _NO_SKILLS_DAMPING
+        reasons.append("no skill overlap")
+    if remote_scope(job) == "other":
+        damping *= _WRONG_PLACE_DAMPING
+        reasons.append("located where you cannot work")
+    if relevance == "none" and len(skills) < _OFF_ROLE_SKILL_OVERRIDE:
+        damping *= _OFF_ROLE_DAMPING
+        reasons.append("not a target role")
+    total = round(sum(breakdown.values()) * damping)
 
     return ScoreResult(
         job=job,
@@ -104,19 +141,23 @@ def score_job(job: Job, profile: Profile) -> ScoreResult:
         matched_skills=skills,
         salary_monthly_cop=salary_cop,
         salary_hourly_usd=hourly_usd,
-        dampened=dampening < 1.0,
+        damping_reasons=reasons,
     )
 
 
 
 def _score_seniority(job: Job, profile: Profile) -> int:
+    points = 20
     years = years_required(job)
     if years is not None:
         distance = max(0, years - profile.max_years_experience)
-        return max(0, 20 - distance * 6)
+        points = 20 - distance * 6
     if detect_seniority(job) is Seniority.senior:
-        return 4  # heavy penalty, not a hard exclude — title labels are noisy
-    return 20  # junior/entry/mid/unknown: no reliable reason to penalize
+        # Checked even when a years figure was found. Previously the years
+        # branch returned early, so Artefact's "Senior Data Engineer" saying
+        # "3+ years" scored a full 20/20 — 29 senior-titled postings did.
+        points = min(points, 4)
+    return max(0, points)
     
 
 def _score_location(job: Job, profile: Profile) -> int:

@@ -376,3 +376,90 @@ significant work — don't let reasoning live only in chat.
   * (third) the output filename sanitiser replaced "/" across the whole path,
     flattening data/tailored/x.docx into a file in the repo root. Sanitise
     the filename only, never the directory separators.
+
+## 2026-09-10 (naming + a real-data scoring audit)
+
+### Tailored-file naming
+
+- The sanitised `{resume}__{company}__{job_id}` name is gone. Andres's own
+  name was nowhere in it, which is exactly what a recruiter's download folder
+  needs to show. `tailor.output_path()` now derives it from the source file:
+  `Andres_Torrado_Resume_D_Eng.docx` -> `Andres_Torrado_D_Eng.docx`, with
+  `(1)`, `(2)` only when an earlier copy is still sitting there. Derived, not
+  hardcoded, so renaming the masters carries through. Tailored copies are
+  meant to be deleted once submitted.
+- Known gap, deliberately accepted: the filename no longer records WHICH job
+  it was tailored for. Phase 5's application tracker is the right place for
+  that (job -> file -> date submitted), not the filename.
+
+### The audit that prompted everything below
+
+Claude had been reasoning about scoring from ONE posting (Lemon.io Senior
+Data Engineer, 83/100). Andres pushed back — "you still haven't checked the
+jobs personally in our job bank" — and scoring every one of the 2,812 stored
+jobs told a very different story than the single sample did. Lesson, again,
+and stronger than the Phase 3 version: a plausible diagnosis from one example
+is not a finding. Rank the whole bank and read the top 100.
+
+What the full pass showed, in order of real cost:
+
+- **36 of the top 100 were places Andres cannot work.** Doha, Beirut,
+  Bengaluru, Riyadh, San Francisco, New York — all scoring 80/100, ABOVE
+  genuine Bogota roles at 75. Location was worth 20 points and being in the
+  wrong country only cost 15 of them; the other four categories carried it.
+- **12 of the top 100 matched none of his target roles** (Security
+  Infrastructure Engineer, Marketing Growth Analytics, SRE Platform).
+  Role is 20 of 100, so scoring zero still left 80 reachable.
+- **Two companies owned 37% of the top 100** (Sezzle 22, Artefact 15) —
+  Greenhouse returns every opening from all 21 companies in companies.yaml.
+- **10 internships in the 70+ band.**
+- Senior-title short-circuit and boilerplate skill inflation were both real
+  but, measured, minor: only 2 senior-titled jobs reached 70+. The original
+  single-sample diagnosis had ranked these FIRST. They were nearly last.
+
+### Fixes
+
+- **Internships hard-excluded** (`requires_internship`), not downweighted —
+  Andres graduated Dec 2025. Matches intern/internship/practicante/pasantia/
+  becario/co-op on word boundaries, so "Internal Audit" and "International"
+  are safe. 47 excluded, all manually verified as genuine placements, zero
+  false positives.
+- **Multiplicative damping generalised.** The single zero-skills factor is now
+  a list of factors with reasons, surfaced in `rank` output:
+  `_NO_SKILLS_DAMPING 0.5`, `_WRONG_PLACE_DAMPING 0.6` (remote_scope=="other"),
+  `_OFF_ROLE_DAMPING 0.6` (role_relevance=="none"). Points alone could not fix
+  this — zeroing location still left an on-site Doha role at 75.
+- **The off-role damper yields to skill evidence** (`_OFF_ROLE_SKILL_OVERRIDE`
+  = half the skill cap). Found by inspecting what got damped: "Dev Python
+  (PySpark/Airflow/PostgreSQL) - Remoto", Colombia, was pushed to 36 despite
+  naming three of his skills in the title alone. An unfamiliar title is weak
+  evidence; real overlap outvotes it.
+- **Senior-title check no longer short-circuited.** `_score_seniority` used to
+  `return` inside the years branch, so Artefact's "Senior Data Engineer"
+  saying "3+ years" scored a full 20/20. 29 senior-titled postings did.
+- **`years_required` now matches its own docstring** — it said "lowest", the
+  code took the FIRST match. Lemon.io only scored correctly because "5+ years
+  as a Data Engineer" happened to be bulleted above "2+ years with Databricks".
+  Reorder those bullets and it would have jumped to 95/100.
+- **Boilerplate tech lists stripped before skill matching** (`own_requirements`).
+  Lemon.io's "NOT YOUR TECH STACK?" paragraph names ~60 technologies across
+  every role they recruit for and handed the posting free matches on Java,
+  PHP, JavaScript and Data Analysis — maxing out a 30/30 skills score off
+  four terms that were not in the job's requirements at all.
+
+### Result
+
+Top 60 is now 44 LinkedIn-alert jobs, 8 Greenhouse, 5 Jooble — real Colombian
+data roles at Mercado Libre, Falabella, Accenture, Philip Morris, Twilio,
+Scotiabank, BairesDev. Company concentration dropped from Sezzle-22 to
+Sezzle-8. Zero top-100 jobs are now located where he cannot work, and zero
+match none of his target roles.
+
+### Known, accepted
+
+- LinkedIn-alert jobs carry no description, so they plateau at 65-70 and tie
+  in large blocks. That is honest — the ordering within a tie is arbitrary
+  because there genuinely is no more information. Fixing it would mean
+  fetching the posting body, i.e. scraping, which stays ruled out.
+- `tailor` does not consult the score. It answers "which resume, what gap",
+  not "should you bother".

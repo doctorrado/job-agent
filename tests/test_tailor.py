@@ -2,7 +2,7 @@ import zipfile
 from pathlib import Path
 
 from jobagent.resumes.loader import docx_lines
-from jobagent.resumes.tailor import _reorder, analyse_gaps, tailor_docx
+from jobagent.resumes.tailor import _reorder, analyse_gaps, output_path, tailor_docx
 
 SKILLS_XML = """<?xml version="1.0"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
@@ -80,3 +80,13 @@ def test_gaps_split_into_covered_missing_and_absent():
     assert "python" in report.covered  # asked for, owned, on the resume
     assert "airflow" in report.missing  # asked for, owned, NOT on the resume
     assert "snowflake" in report.absent  # asked for, not owned - never added
+
+def test_output_path_keeps_in_house_naming(tmp_path):
+    source = Path("private/resumes/Andres_Torrado_Resume_D_Eng.docx")
+
+    first = output_path(source, tmp_path)
+    assert first.name == "Andres_Torrado_D_Eng.docx"
+
+    # a copy still sitting there un-submitted must not be overwritten
+    first.write_bytes(b"")
+    assert output_path(source, tmp_path).name == "Andres_Torrado_D_Eng(1).docx"

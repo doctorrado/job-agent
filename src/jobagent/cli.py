@@ -16,7 +16,7 @@ from jobagent.pipeline.fetch import run_fetch
 from jobagent.pipeline.score import score_job
 from jobagent.resumes.loader import docx_lines, load_resumes
 from jobagent.resumes.select import build_weights, choose_resume
-from jobagent.resumes.tailor import analyse_gaps, page_count, tailor_docx
+from jobagent.resumes.tailor import analyse_gaps, output_path, page_count, tailor_docx
 from jobagent.sources.jooble_source import LIFETIME_LIMIT, JoobleSource, read_usage
 from jobagent.storage.db import make_session_factory
 from jobagent.storage.repository import JobRepository, ReviewRepository
@@ -94,7 +94,7 @@ def rank(
     for r in eligible[:limit]:
         matched = ",".join(r.matched_skills) or "none"
         b = r.breakdown
-        note = "  (dampened — no skill overlap)" if r.dampened else ""
+        note = f"  (dampened — {', '.join(r.damping_reasons)})" if r.damping_reasons else ""
         verdict = verdicts.get(r.job.dedupe_key)
         if verdict:
             note += f"  [{verdict}]"
@@ -368,10 +368,7 @@ def tailor(
         return
 
     priority = {t.lower() for t in gaps.covered}
-    # sanitise only the filename — never the directory separators
-    stem = f"{chosen.name}__{job.company}__{job.source_job_id}"
-    stem = re.sub(r"[^A-Za-z0-9._-]+", "_", stem)
-    destination = Path(out_dir) / f"{stem}.docx"
+    destination = output_path(chosen.path, Path(out_dir))
     moved = tailor_docx(chosen.path, destination, priority)
 
     pages = page_count(destination)

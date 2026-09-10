@@ -101,8 +101,9 @@ def test_zero_skill_match_is_dampened_not_hidden():
     result = score_job(job, _profile())
     assert result.eligible is True
     assert result.breakdown["skills"] == 0
-    assert result.total == round(sum(result.breakdown.values()) * 0.5)
-    assert result.dampened is True
+    # Assert on the specific reason, not the total: other dampers (wrong
+    # place, off-role) legitimately stack on this fixture too.
+    assert "no skill overlap" in result.damping_reasons
 
 def test_description_less_job_is_not_dampened():
     # LinkedIn alert emails carry no description at all, so zero skill
@@ -110,8 +111,7 @@ def test_description_less_job_is_not_dampened():
     job = _job(title="Business Intelligence Analyst 2", description="")
     result = score_job(job, _profile())
     assert result.breakdown["skills"] == 0
-    assert result.dampened is False
-    assert result.total == sum(result.breakdown.values())
+    assert "no skill overlap" not in result.damping_reasons
 
 def test_role_keywords_separate_target_roles_from_unrelated_ones():
     profile = _profile()
@@ -126,3 +126,31 @@ def test_role_keywords_separate_target_roles_from_unrelated_ones():
     assert spanish.breakdown["role"] == 12  # matches "analista", accent-insensitive
     assert unrelated.breakdown["role"] == 0
 
+
+
+def test_internship_is_excluded_outright():
+    for title in ("Data Analyst Intern", "Practicante de Datos", "Data Co-op"):
+        result = score_job(_job(title=title), _profile())
+        assert result.eligible is False, title
+        assert "internship" in result.ineligible_reason
+
+
+def test_internal_and_international_are_not_internships():
+    for title in ("Internal Audit Analyst", "International Data Engineer"):
+        assert score_job(_job(title=title), _profile()).eligible is True, title
+
+
+def test_senior_title_penalised_even_when_years_look_junior():
+    # Artefact's real "Senior Data Engineer" says "3+ years", which used to
+    # return early on the years branch and score a full 20/20.
+    job = _job(title="Senior Data Engineer", description="3+ years of experience required. " * 10)
+    assert score_job(job, _profile()).breakdown["seniority"] == 4
+
+
+def test_boilerplate_tech_list_does_not_inflate_skills():
+    profile = _profile()
+    real = "You will build data pipelines. Requirements: strong Python and SQL. " * 4
+    padded = real + " NOT YOUR TECH STACK? We also hire for Scala, Rust, PHP, Java."
+    assert score_job(_job(description=real), profile).matched_skills == score_job(
+        _job(description=padded), profile
+    ).matched_skills
