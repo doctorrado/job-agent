@@ -964,3 +964,51 @@ dates (Toyota Mississippi Sep-Dec 2024; Mazda Toyota May-Aug 2025; the
 portfolio project) and handed to Andres to CORRECT before pasting. Deriving is
 not stating, and a wrong number here goes straight onto an application form —
 this is the "never fabricate experience" rule at its most literal.
+
+## 2026-09-12 — the wide probe, and the performance it exposed
+
+### The wide probe was worth it, despite looking like noise
+
+Probing all 496 remaining companies (not just those with a 40+ job) found 64
+boards; companies.yaml 41 -> 105; the bank went 3,985 -> **10,774** jobs.
+Most of the additions ARE noise — Zscaler 371 openings, Veeam 242, Elevenlabs
+246, overwhelmingly US sales roles, because those companies entered the bank
+via Jobicy/Adzuna rather than via his alerts.
+
+The worry was that noise would swamp the top of the ranked list. Measured:
+
+```
+top-100 locations: Colombia 91, LATAM 4, other 5
+```
+
+The scorer buried all of it. And the wide net found employers the narrow one
+would have missed — **Cuesta Partners** (4 Bogota/LATAM data roles in the top
+20) and **Clara** (Data Scientist, Bogota, 95). Both are exactly the kind of
+company this project exists to find.
+
+Lesson: judge a source by what reaches the TOP of the list, not by how much
+it adds to the pile. Filtering probe candidates by their current job's score
+was also wrong-headed — Wizeline's alert job scored 70 while its board held a
+95. The board is the point, not the alert.
+
+### 10,774 jobs made the scorer too slow to use
+
+`rank` and `review-queue` re-score everything on every call; at 10k jobs that
+passed two minutes. Profiled: `matched_skills` was 59% of all scoring time,
+178,750 regex searches for 1,500 jobs — 65 skills tested individually against
+every description.
+
+Replaced with ONE combined pattern. Two subtleties, both caught by diffing
+old against new across all 10,774 jobs rather than trusting the change:
+
+1. **Alternation consumes its match**, so "data quality analysis" credited
+   "Data Quality" and silently lost "Quality Analysis". Fixed with a
+   zero-width lookahead, which lets overlapping skills both match. Two real
+   jobs differed on exactly this.
+2. **Leftmost-longest ordering** would stop "Microsoft SQL Server" from also
+   crediting "SQL", which the per-skill loop did. A nesting map computed once
+   per profile restores it.
+
+Result: **3.0x faster, 0 of 10,774 jobs scoring differently.** The diff was
+the whole point — a 3x speedup that quietly changed 2 scores would have been
+a bad trade, and there was no way to know without checking.

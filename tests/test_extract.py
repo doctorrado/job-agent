@@ -149,3 +149,41 @@ def test_salary_hourly_usd_none_without_explicit_period():
 def test_requires_us_work_authorization_detects_remotely_within_us():
     job = _job(description="This role may be performed fully remotely within the United States.")
     assert requires_us_work_authorization(job) is True
+
+
+def test_overlapping_skills_are_both_matched():
+    """"data quality analysis" must credit BOTH Data Quality and Quality
+    Analysis. A plain alternation consumes the first and loses the second —
+    2 real jobs in 10,774 differed on exactly this."""
+    profile = Profile(
+        name="t",
+        target_roles=["Data Analyst"],
+        skills=["Data Quality", "Quality Analysis", "Python"],
+    )
+    job = Job(
+        source="file",
+        source_job_id="1",
+        url="https://example.com/1",
+        title="Data Scientist",
+        company="Acme",
+        description="Responsibilities: data quality analysis and remediation. " * 6,
+    )
+    assert set(matched_skills(job, profile)) == {"Data Quality", "Quality Analysis"}
+
+
+def test_a_nested_skill_name_credits_the_inner_one():
+    """A posting naming only "Microsoft SQL Server" still demonstrates SQL."""
+    profile = Profile(
+        name="t",
+        target_roles=["Data Analyst"],
+        skills=["SQL", "Microsoft SQL Server"],
+    )
+    job = Job(
+        source="file",
+        source_job_id="1",
+        url="https://example.com/1",
+        title="Analyst",
+        company="Acme",
+        description="You will work with Microsoft SQL Server daily. " * 8,
+    )
+    assert set(matched_skills(job, profile)) == {"SQL", "Microsoft SQL Server"}
