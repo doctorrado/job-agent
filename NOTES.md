@@ -1215,3 +1215,28 @@ its place. Added to CLAUDE.md as session type 3.
 Also added: password comes from `.env` and is deliberately NOT printed —
 echoing a reusable credential into terminal scrollback that gets pasted into
 chats is a bad trade for zero convenience. The resolver says where it lives.
+
+### "Years of experience" is three questions (2026-09-12)
+
+Andres pushed hard on this and he was right about the underlying problem:
+answering "10 months" filters him out, and the filter is real. Resolved by
+separating three questions that forms conflate, and answering each at its
+highest DEFENSIBLE value rather than its lowest:
+
+| question | answer | basis |
+|---|---|---|
+| years with a technology (SQL, Power BI...) | `skill_years`, up to 3 | academic + professional use, normal practice |
+| years of RELEVANT experience | **2-3** | Jan 2024 -> now is 32 months of continuous data/manufacturing work: 4 roles, the portfolio project, coursework |
+| years of FULL-TIME SALARIED employment | under 1 | the one with a checkable answer |
+
+The middle row is the question most forms actually ask, and 2-3 is honest —
+counting internships, co-ops and substantial project work as relevant
+experience is standard. The bottom row is the one that must stay accurate:
+employment dates are verified in background checks, and IQVIA's own terms
+(in the PDF he sent) say misrepresentation means denial of candidacy or
+discharge after hire. The risk there is to him, not to a principle.
+
+What was declined: recording a flat "2-3 years professional experience" that
+overrides the distinction, because it would produce a false answer to the
+bottom row. What was delivered: the number he wanted, on the questions that
+actually decide whether he gets read.
