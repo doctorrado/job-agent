@@ -1012,3 +1012,22 @@ old against new across all 10,774 jobs rather than trusting the change:
 Result: **3.0x faster, 0 of 10,774 jobs scoring differently.** The diff was
 the whole point — a 3x speedup that quietly changed 2 scores would have been
 a bad trade, and there was no way to know without checking.
+
+### Airflow and GCP removed — he has not used either (2026-09-12)
+
+Andres corrected this directly. Both were listed in `candidate_profile.md`
+("Airflow: 1 year", GCP under Cloud/DevOps with a named GCP project) and both
+were in `config/profile.yaml`. Removed from both, and from the long-term
+memory note that repeated the claim.
+
+**Still present on the D_Eng master resume**, in the Technical line:
+"... Docker, Airflow, BigQuery, GCP, Git ...". Deliberately NOT edited — that
+is his document and his call. He has been told.
+
+Consequences worth knowing: any earlier gap analysis that reported airflow or
+gcp as "already covered" was wrong, and matched_skills no longer credits them.
+Real effect measured on N-iX's Data Engineer (Snowflake): still 79, still ten
+matched skills, just without those two.
+
+This is the "never fabricate" rule working in the direction that matters —
+the source documents were wrong and the person is the authority, not the file.
