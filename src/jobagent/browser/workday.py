@@ -227,8 +227,19 @@ async def choose_option(page, selector: str, wanted: str) -> tuple[bool, str]:
         return strip_accents(wanted).casefold() in strip_accents(shown).casefold()
 
     async def shown_value() -> str:
+        """What the widget currently displays.
+
+        An <input> keeps its value in `.value` and has NO inner text, while a
+        div-based widget is the opposite. Reading only inner_text made this
+        report failure on input-based comboboxes that had in fact been set
+        correctly — the same shape of mistake as comparing accents literally.
+        """
         try:
-            return ((await page.locator(selector).inner_text()) or "").strip()
+            return await page.evaluate(
+                "(sel) => { const el = document.querySelector(sel); if (!el) return '';"
+                " return (el.value || el.innerText || '').trim(); }",
+                selector,
+            )
         except Exception:  # noqa: BLE001
             return ""
 
@@ -272,8 +283,17 @@ async def choose_option(page, selector: str, wanted: str) -> tuple[bool, str]:
     try:
         await page.keyboard.type(wanted, delay=60)
         await page.wait_for_timeout(900)
-        await page.keyboard.press("Enter")
-        await page.wait_for_timeout(900)
+        # Enter, check, Enter again. Workday's multi-select comboboxes (the
+        # ones that read "1 item selected") take one Enter to pick the
+        # filtered option and another to close the list and commit it. Andres
+        # suggested the second press after watching the first do nothing.
+        # Bounded at two: it is already established that the list is open, so
+        # these go to the listbox, but more presses would be guessing.
+        for attempt in (1, 2):
+            await page.keyboard.press("Enter")
+            await page.wait_for_timeout(900)
+            if matches(await shown_value()):
+                return True, f"{await shown_value()} (Enter x{attempt})"
     except Exception as exc:  # noqa: BLE001
         return False, f"{type(exc).__name__} while selecting"
 

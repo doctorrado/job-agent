@@ -1610,3 +1610,24 @@ different strings.** Anything typed into a combobox should be the shortest
 unambiguous thing that matches, not the full label — and verification should
 be a substring check rather than equality, because the widget decorates what
 it shows.
+
+### Two Enters, and a verification that lied (2026-09-12)
+
+Andres suggested pressing Enter twice. He was right: Workday's multi-select
+comboboxes — the ones reading "1 item selected" — take one Enter to pick the
+filtered option and a second to close the list and commit it.
+
+But the first test of that change reported failure while the field had in
+fact been set correctly. `shown_value()` read `inner_text()`, and an
+`<input>` has NO inner text — its value is in `.value`. So every input-based
+combobox verified as a failure no matter what it had actually done.
+
+That is now the THIRD verification bug of the same shape: comparing accents
+literally, then reading the wrong property. Each time, the action worked and
+the check called it a failure. A verifier that can report false negatives is
+worse than none, because it sends you off fixing something that already works
+— which is exactly what happened here across several rounds.
+
+Both reads now try `.value` then `innerText`, and the escalation is bounded
+at two Enters: the listbox is known to be open, so they land there, but a
+third would be guessing.
