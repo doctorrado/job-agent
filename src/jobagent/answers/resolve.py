@@ -34,12 +34,17 @@ _SPONSORSHIP = re.compile(
     r"autorizaci[oó]n para trabajar)",
     re.I,
 )
+_PASSWORD_FIELD = re.compile(r"\b(password|contrase[ñn]a)\b", re.I)
+_RESUME_FIELD = re.compile(r"(upload a file|resume|cv\b|curr[ií]culum|hoja de vida)", re.I)
 _SKILLS_FIELD = re.compile(r"(type to add skills|list your skills|^skills?$|habilidades)", re.I)
 _LEGAL_AGE = re.compile(r"(edad legal m[ií]nima|legal(ly)? (minimum )?age|of legal age)", re.I)
 _HISTORY_FIELDS = (
     (re.compile(r"\b(job title|puesto|cargo)\b", re.I), "employment", "job_title"),
     (re.compile(r"\b(company|employer|empresa)\b", re.I), "employment", "company"),
     (re.compile(r"\brole description|responsibilities\b", re.I), "employment", "description"),
+    (re.compile(r"^\s*location\s*$|work location", re.I), "employment", "location"),
+    (re.compile(r"^\s*from\s*$|start date|fecha de inicio", re.I), "employment", "start"),
+    (re.compile(r"^\s*to\s*$|end date|fecha de fin", re.I), "employment", "end"),
     (re.compile(r"\bschool or university\b|\buniversity\b|\bschool\b|universidad", re.I),
      "education", "school"),
     (re.compile(r"\bfield of study\b|[aá]rea de estudio", re.I), "education", "field_of_study"),
@@ -124,6 +129,24 @@ def resolve(
             )
         return ResolvedAnswer(
             answer=f"{years:g}", source=f"profile.skill_years[{skill.lower()}]"
+        )
+
+    if _PASSWORD_FIELD.search(question):
+        # Deliberately not printed. The value belongs in .env; echoing it puts
+        # a reusable credential into terminal scrollback that gets pasted into
+        # chats. Pointing at it is as helpful as printing it.
+        return ResolvedAnswer(
+            answer="use APPLICATION_PASSWORD from .env (not printed here)",
+            source=".env",
+            confident=False,
+        )
+
+    if _RESUME_FIELD.search(question):
+        return ResolvedAnswer(
+            answer="attach the tailored resume from data/tailored/ "
+            "(jobagent tailor --write generates it)",
+            source="data/tailored",
+            confident=False,
         )
 
     if _SKILLS_FIELD.search(question.strip()):

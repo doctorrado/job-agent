@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     jooble_api_key: str | None = None
     gmail_address: str | None = None
     gmail_app_password: str | None = None
+    # Shared password for the candidate accounts every ATS makes you create.
+    # Lives in .env and is never printed — the resolver says where it is.
+    application_password: str | None = None
 
 
 

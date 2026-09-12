@@ -1186,3 +1186,32 @@ one, and the page shell carries no tenant/site metadata. And a Workday job
 URL returns **200 even when the posting is gone** — it is a SPA, so the shell
 loads and then renders "does not exist". Every link from a web search in this
 session was dead that way. Status codes prove nothing here.
+
+### Job titles, and a trap the real form exposed (2026-09-12)
+
+Titles supplied by Andres — all four were placeholders in what he had typed:
+
+    05/2025-08/2025  Stamping/Bodyweld Production Engineer Intern  Mazda Toyota
+    09/2024-12/2024  Quality Systems Engineer Intern               Toyota Mississippi
+    08/2024          Process Improvement Specialist                Keith Huber
+    01/2024          Process Improvement Specialist                Hol-Mac
+
+**Two of the four are explicitly Intern titles, and the total is ~10 months.**
+That matters for a question no form had asked yet but many will: "how many
+years of PROFESSIONAL experience do you have?" is not the same question as
+"how many years of Python?" — 3 is right for the second and badly wrong for
+the first. Banked explicitly so the distinction cannot be blurred.
+
+Same class of error as the "Bachelor of Engineering" one: a true-sounding
+number in the wrong box.
+
+### New session type: filling an application together
+
+Andres's idea, and a good one — the script handles lookup, Claude handles
+judgment. `fill` now answers 28 of IQVIA's 36 fields; the remaining 7 are
+genuinely judgment or per-company, which is where a reasoning session earns
+its place. Added to CLAUDE.md as session type 3.
+
+Also added: password comes from `.env` and is deliberately NOT printed —
+echoing a reusable credential into terminal scrollback that gets pasted into
+chats is a bad trade for zero convenience. The resolver says where it lives.
