@@ -34,7 +34,17 @@ class CompanyBoardsSource(JobSource):
         for entry in companies:
             fetcher = _FETCHERS.get(entry["platform"])
             if fetcher is None:
-                continue  # unknown platform in the config — skip, don't crash the whole run
+                # Loudly. discover-companies can write a platform this module
+                # cannot read — it happened with smartrecruiters and recruitee,
+                # and four companies sat in companies.yaml fetching nothing at
+                # all because the skip was silent.
+                log.warning(
+                    "unknown_board_platform",
+                    company=entry["name"],
+                    platform=entry["platform"],
+                    known=sorted(_FETCHERS),
+                )
+                continue
             try:
                 jobs.extend(fetcher(self._client, entry["slug"], entry["name"]))
             except (httpx.HTTPError, ValueError, KeyError) as exc:
@@ -112,17 +122,106 @@ def _fetch_ashby(client: httpx.Client, slug: str, company: str) -> list[Job]:
     ]
 
 
+def _fetch_recruitee(client: httpx.Client, slug: str, company: str) -> list[Job]:
+    """Recruitee's public offers API. Description and requirements are both
+    in the list response, so one request covers a whole board."""
+    r = client.get(f"https://{slug}.recruitee.com/api/offers/")
+    r.raise_for_status()
+    return [
+        Job(
+            source="recruitee",
+            source_job_id=str(o["id"]),
+            url=o["careers_url"],
+            title=o["title"],
+            company=company,
+            location=o.get("location") or ", ".join(
+                x for x in (o.get("city"), o.get("country_code")) if x
+            ),
+            description=f"{o.get('description') or ''}\n{o.get('requirements') or ''}",
+            posted_date=_parse_iso_date(o.get("published_at")),
+        )
+        for o in r.json().get("offers", [])
+    ]
+
+
+def _fetch_smartrecruiters(client: httpx.Client, slug: str, company: str) -> list[Job]:
+    """SmartRecruiters' public postings API.
+
+    Unlike every other platform here the list response carries NO description
+    — it lives behind a per-posting detail call, so this costs one request per
+    job. Capped at a single page for that reason. Experian's 100 openings
+    (5 of them in Colombia) were sitting in companies.yaml unreadable until
+    this existed.
+    """
+    listing = client.get(
+        f"https://api.smartrecruiters.com/v1/companies/{slug}/postings",
+        params={"limit": _SMARTRECRUITERS_PAGE},
+    )
+    listing.raise_for_status()
+
+    jobs: list[Job] = []
+    for posting in listing.json().get("content", []):
+        location = posting.get("location") or {}
+        description = ""
+        try:
+            detail = client.get(
+                f"https://api.smartrecruiters.com/v1/companies/{slug}/postings/{posting['id']}"
+            )
+            if detail.status_code == 200:
+                sections = detail.json().get("jobAd", {}).get("sections", {})
+                description = "\n".join(
+                    section.get("text", "")
+                    for section in sections.values()
+                    if isinstance(section, dict)
+                )
+        except httpx.HTTPError:
+            pass  # a posting without its body is still worth surfacing
+        jobs.append(
+            Job(
+                source="smartrecruiters",
+                source_job_id=str(posting["id"]),
+                url=f"https://jobs.smartrecruiters.com/{slug}/{posting['id']}",
+                title=posting["name"],
+                company=company,
+                location=", ".join(
+                    str(v)
+                    for v in (location.get("city"), location.get("region"),
+                              location.get("country"))
+                    if v
+                ),
+                description=description,
+                employment_type=posting.get("typeOfEmployment", {}).get("label"),
+                posted_date=_parse_iso_date(posting.get("releasedDate")),
+            )
+        )
+    return jobs
+
+
+_SMARTRECRUITERS_PAGE = 100
+
 _FETCHERS = {
     "greenhouse": _fetch_greenhouse,
     "lever": _fetch_lever,
     "ashby": _fetch_ashby,
+    "recruitee": _fetch_recruitee,
+    "smartrecruiters": _fetch_smartrecruiters,
 }
 
 
 def _parse_iso_date(value: str | None) -> date | None:
+    """Best-effort date parse across platforms.
+
+    Recruitee writes "2026-09-10 09:36:16 UTC", which fromisoformat rejects.
+    A posting date is never worth failing a whole board over, so an
+    unparseable value yields None rather than raising.
+    """
     if not value:
         return None
-    return datetime.fromisoformat(value.replace("Z", "+00:00")).date()
+    cleaned = value.strip().replace("Z", "+00:00").removesuffix(" UTC")
+    try:
+        return datetime.fromisoformat(cleaned).date()
+    except ValueError:
+        return None
 
 
 def _parse_epoch_ms(value: int | None) -> date | None:

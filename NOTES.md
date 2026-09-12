@@ -899,3 +899,32 @@ The LinkedIn digest footer ("New jobs from your other alerts" / "See all jobs
 on LinkedIn") parsed as a posting, with raw `<strong class="font-bold"...>`
 markup landing in the location field. Two stored rows. Some digests embed HTML
 inside the text/plain part, so fields are now tag-stripped defensively.
+
+### The probe could write platforms the fetcher could not read (2026-09-12)
+
+`discover-companies` probes six ATS platforms; `CompanyBoardsSource` only
+fetched three. So it happily wrote `smartrecruiters` and `recruitee` entries
+into companies.yaml that `_FETCHERS.get(platform)` returned None for — and
+the miss was a bare `continue` with a reassuring comment. Four companies sat
+in the config fetching nothing: Experian (100 openings, 4 in Bogota), QIMA
+(100), Keyrus (6), GEODIS (19). Their only rows in the bank came from
+LinkedIn alerts, with no descriptions — which is exactly the problem the
+probe exists to solve.
+
+Found by asking a plain question — "have we actually got descriptions for
+those companies?" — and looking per company instead of at the 97% average.
+The four zeroes were invisible in the aggregate.
+
+Fixed three ways:
+- `_fetch_recruitee`: description and requirements are both in the list
+  response, so one request covers a board.
+- `_fetch_smartrecruiters`: its list response carries NO description, unlike
+  every other platform here. The body needs a per-posting detail call, so
+  this costs one request per job and is capped at one 100-job page.
+- The unknown-platform branch now logs `unknown_board_platform` with the
+  platforms it does know. A silent skip is how this survived.
+
+Also: `_parse_iso_date` now returns None instead of raising. Recruitee writes
+"2026-09-10 09:36:16 UTC", which `fromisoformat` rejects — and because the
+per-company handler catches ValueError, a whole board would have been dropped
+over a date field nothing depends on.
