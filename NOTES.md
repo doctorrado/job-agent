@@ -1738,7 +1738,16 @@ Two more, both consequences of earlier failed runs rather than of the form:
 Verified from the exact state Andres's form was stuck in: filter box holding
 stale text AND a wrong chip. Ends with the right chip and an empty filter.
 
+**Confirmed working on the live IQVIA form, 2026-09-12.**
+
 Five rounds on this one widget. Every round the code reported success while
 the chip was wrong, and each fix moved the false success rather than removing
 it. The single change that ended it was deciding, once, WHERE the value lives
 for this widget — the chips — and refusing to read anywhere else.
+
+The general lesson, and it has now cost more time than any other in this
+project: **a verifier that can report a false success is worse than no
+verifier**, because every subsequent hour is spent debugging the wrong thing.
+Three separate bugs in this session were "the action worked and the check
+called it a failure" or the reverse. Whenever something reads back a result,
+be certain it is reading the same thing the user is looking at.
