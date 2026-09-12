@@ -29,7 +29,18 @@ class _FakePage:
             self._values[selector] = value
 
     async def evaluate(self, script: str, arg=None):
+        # selected_chips asks for chips; this double has none.
+        if "role=option" in script:
+            return []
         return self._values.get(arg, "")
+
+    def locator(self, selector: str):
+        return _FakeLocator()
+
+
+class _FakeLocator:
+    async def count(self) -> int:
+        return 0
 
 
 def _field(label, kind="text", value="", selector=None, required=False):
@@ -280,7 +291,7 @@ def test_a_text_fill_that_does_not_stick_is_reported():
         )
     )
     assert report["filled"] == []
-    assert "did not stick" in report["skipped"][0][1]
+    assert "the value is still" in report["skipped"][0][1]
 
 
 def test_a_normal_text_field_still_reports_filled():

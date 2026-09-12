@@ -1684,3 +1684,37 @@ Workday builds these several different ways. Behaviour is one rule.
 
 `--debug` also now shows `<label for>` text and `aria-activedescendant`,
 since aria-label alone hid the very field being chased.
+
+### The chip widget, and three false successes in a row (2026-09-12)
+
+Andres's screenshot showed what Country Phone Code actually is:
+
+    Country Phone Code*  [ United States of America   ]   <- filter box
+                         [ x Colombia (+57)           ]   <- the real value
+
+A filter box with the selection beneath it as a removable chip. Three
+different verifications all reported success on it while the chip never
+changed:
+
+1. `page.fill` wrote the text and reported "filled" — the value went into the
+   filter box, which is not the value.
+2. The "did it stick" check read the input's `.value` — again the filter box.
+3. After chip-clearing was added, it removed the old chip, added nothing, and
+   still passed, because it fell back to reading the filter box a third time.
+
+Each fix moved the false success somewhere new rather than removing it. The
+rule that finally holds: **if a field HAD chips, it must have matching chips
+afterwards** — no falling back to the input's value for a widget whose value
+is not in its input.
+
+Two more things the mock settled:
+
+* **Order matters.** Chips must be cleared BEFORE opening the dropdown.
+  Clicking a chip's "x" moves focus off the field, so anything typed after
+  goes to the page rather than the filter box — which is why the first
+  attempt removed Colombia and then typed into nothing.
+* **A multi-select adds, it does not replace.** Leaving the old chip in place
+  ends up with both Colombia (+57) and the United States selected.
+
+Verified against a mock built from the screenshot: chips before
+['Colombia (+57)'], chips after ['United States of America (+1)'].

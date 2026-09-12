@@ -253,6 +253,59 @@ async def read_fields(page) -> list[PageField]:
     return seen
 
 
+async def selected_chips(page, selector: str) -> list[str]:
+    """Values already chosen in a multi-select, read from its chips.
+
+    Workday's Country Phone Code is a filter box with the real selection
+    shown beneath it as removable chips ("x Colombia (+57)"). The typed text
+    survives in the FILTER, so reading the input's value said the new value
+    had taken while the chip still said Colombia.
+    """
+    return await page.evaluate(
+        """
+        (sel) => {
+          const el = document.querySelector(sel);
+          if (!el) return [];
+          // The chips live beside the field, inside a shared container.
+          let box = el.closest('[data-automation-id], div');
+          for (let i = 0; i < 3 && box && box.parentElement; i++) {
+            if (box.querySelector('[role=option]')) break;
+            box = box.parentElement;
+          }
+          if (!box) return [];
+          return Array.from(box.querySelectorAll('[role=option]'))
+            .map(o => ((o.getAttribute('aria-label') || o.innerText || '')).trim())
+            .filter(t => /press delete|remove/i.test(t))
+            .map(t => t.replace(/,?\\s*press delete.*$/i, '').trim());
+        }
+        """,
+        selector,
+    )
+
+
+async def clear_chips(page, selector: str) -> int:
+    """Remove every already-selected chip. Returns how many went.
+
+    A multi-select ADDS rather than replaces, so leaving the old chip in
+    place means ending up with both Colombia (+57) and the United States.
+    """
+    removed = 0
+    for _ in range(6):  # bounded: never loop on a chip that will not go
+        buttons = page.locator(
+            '[role=option][aria-label*="press delete" i] button, '
+            '[role=option][aria-label*="press delete" i] [role=button]'
+        )
+        if await buttons.count() == 0:
+            break
+        try:
+            await buttons.first.click(timeout=2500)
+            await page.wait_for_timeout(300)
+            removed += 1
+        except Exception:  # noqa: BLE001
+            break
+    return removed
+
+
 async def choose_option(page, selector: str, wanted: str) -> tuple[bool, str]:
     """Click the dropdown, type the value, press Enter. Then check it took.
 
@@ -308,6 +361,20 @@ async def choose_option(page, selector: str, wanted: str) -> tuple[bool, str]:
     except Exception as exc:  # noqa: BLE001
         return False, f"{type(exc).__name__} locating the field"
 
+    # Clear any existing chip FIRST. A multi-select adds rather than
+    # replaces, so the old value has to go — and removing it afterwards is
+    # not an option: clicking the chip's "x" takes focus off the field, so
+    # anything typed next goes to the page instead of the filter box.
+    had_chips = False
+    try:
+        existing = await selected_chips(page, selector)
+        had_chips = bool(existing)
+        if existing and not any(matches(chip) for chip in existing):
+            await clear_chips(page, selector)
+            await page.wait_for_timeout(300)
+    except Exception:  # noqa: BLE001 - a field without chips is the normal case
+        pass
+
     try:
         await handle.click(timeout=5000)
         await page.wait_for_timeout(600)
@@ -347,10 +414,26 @@ async def choose_option(page, selector: str, wanted: str) -> tuple[bool, str]:
         for attempt in (1, 2):
             await page.keyboard.press("Enter")
             await page.wait_for_timeout(900)
-            if matches(await shown_value()):
+            # For a chip widget the chips ARE the value; the filter box
+            # keeps whatever was typed, so matching on it reported success
+            # after merely REMOVING the old chip and adding nothing.
+            chips_now = await selected_chips(page, selector) if had_chips else []
+            if had_chips:
+                if any(matches(chip) for chip in chips_now):
+                    return True, f"{', '.join(chips_now)} (Enter x{attempt})"
+            elif matches(await shown_value()):
                 return True, f"{await shown_value()} (Enter x{attempt})"
     except Exception as exc:  # noqa: BLE001
         return False, f"{type(exc).__name__} while selecting"
+
+    # Prefer the chips: for a multi-select they ARE the value, and the input
+    # merely holds whatever was typed to filter.
+    chips = await selected_chips(page, selector)
+    if had_chips or chips:
+        if any(matches(chip) for chip in chips):
+            return True, ", ".join(chips)
+        current = ", ".join(chips) if chips else "nothing"
+        return False, f"selection is now {current}, not {wanted!r}"
 
     after = await shown_value()
     if matches(after):
@@ -463,11 +546,23 @@ async def apply_answers(
             " return el ? (el.value || '') : ''; }",
             selector,
         )
-        if strip_accents(answer.answer).casefold() in strip_accents(stuck).casefold():
+        # If the field has chips, THEY are the value — the input only holds
+        # what was typed to filter, so a match there is a false success.
+        try:
+            chips = await selected_chips(page, selector)
+        except Exception:  # noqa: BLE001
+            chips = []
+        wanted_norm = strip_accents(answer.answer).casefold()
+        if chips:
+            if any(wanted_norm in strip_accents(c).casefold() for c in chips):
+                filled.append((label, ", ".join(chips)))
+                continue
+        elif wanted_norm in strip_accents(stuck).casefold():
             filled.append((label, answer.answer))
             continue
         if not choose:
-            skipped.append((label, f"typed it but it did not stick (shows {stuck!r})"))
+            current = ", ".join(chips) if chips else stuck
+            skipped.append((label, f"typed it but the value is still {current!r}"))
             continue
         ok, detail = await choose_option(page, selector, answer.answer)
         if ok:
