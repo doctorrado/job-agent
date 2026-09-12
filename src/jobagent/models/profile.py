@@ -88,6 +88,8 @@ class Contact(BaseModel):
     currently_resides_in_colombia: bool = True
     relocation_note: str = ""
 
+    phone_device_type: str = "Mobile"
+
     @property
     def phone_country_code(self) -> str:
         """Just the dialling code. Workday asks for it in its own field, and

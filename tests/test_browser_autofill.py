@@ -188,3 +188,15 @@ def test_a_correct_dropdown_is_not_re_selected():
     report = asyncio.run(go())
     assert report["filled"] == []
     assert "check it" in report["skipped"][0][1]
+
+
+def test_page_chrome_and_label_noise_are_handled():
+    """Live Workday reported "utility Menu Button" three times, "main menu",
+    and labels like "Country United States of America Required"."""
+    from jobagent.answers.form import clean_label
+
+    assert clean_label("Country*") == "Country"
+    # the JS strips Required/Select One before the label ever reaches Python;
+    # what Python must handle is the asterisk and numbering
+    assert clean_label("1. Phone Number*") == "Phone Number"
+

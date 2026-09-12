@@ -68,6 +68,10 @@ _CONTACT_FIELDS = (
     # Order matters: "Phone Extension" and "Country Phone Code" both contain
     # "phone", and a generic match put the full number into all three boxes.
     (re.compile(r"\b(extension|ext\.?)\b", re.I), "__skip__"),
+    # "Phone Device Type" asks Mobile/Home/Work, and matched the phone
+    # pattern — it was answered with the phone number itself.
+    (re.compile(r"phone\s*device\s*type|device\s*type|tipo de tel[eé]fono", re.I),
+     "phone_device_type"),
     (re.compile(r"country\s*phone\s*code|c[oó]digo de pa[ií]s", re.I), "phone_country_code"),
     # Workday splits the dialling code into its own box, so a field named
     # "Phone Number" wants the national part only.

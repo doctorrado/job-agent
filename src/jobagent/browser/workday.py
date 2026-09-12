@@ -25,6 +25,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from jobagent.answers.form import FilledField, Outcome, clean_label
+from jobagent.pipeline.extract import strip_accents
 
 CDP_ENDPOINT = "http://localhost:9222"
 DEBUG_PORT = 9222
@@ -136,12 +137,24 @@ async def read_fields(page) -> list[PageField]:
             if (!label && el.getAttribute('placeholder')) label = el.getAttribute('placeholder');
             if (!label && autoId) label = autoId.replace(/([a-z])([A-Z])/g, '$1 $2');
             if (!label) continue;
+            // Page chrome, not form fields: the language picker, the account
+            // menu, the nav. They showed up as "utility Menu Button" three
+            // times and as "main menu".
+            if (/^(utility menu|main menu|menu|search|skip to)/i.test(label)) continue;
+            if (/^\\d*\\s*items? selected$/i.test(label)) continue;
             // Live Workday serves these WITHOUT data-automation-id, so every
             // selector came back empty and nothing could be filled. Stamp our
             // own attribute instead: it always exists because we just made it.
             const handle = 'jf' + (i++);
             el.setAttribute('data-jobagent', handle);
             const req = el.required || el.getAttribute('aria-required') === 'true';
+            // Workday stuffs the current value and "Required" into aria-label:
+            // "Country United States of America Required". Left alone, the
+            // label never matches an answer and the value pollutes the match.
+            label = label.replace(/\\s*Required\\s*$/i, '')
+                         .replace(/\\s*Select One\\s*$/i, '')
+                         .replace(/\\s*\\(required\\)\\s*$/i, '')
+                         .trim();
             const isWidget = el.tagName === 'BUTTON' ||
                              el.getAttribute('role') === 'combobox' ||
                              el.getAttribute('role') === 'listbox';
@@ -149,8 +162,14 @@ async def read_fields(page) -> list[PageField]:
             if (el.tagName === 'SELECT') kind = 'select';
             else if (isWidget) kind = 'dropdown';
             else if (el.type) kind = el.type;
-            // A custom widget shows its choice as text, not as .value
-            const shown = el.value || (isWidget ? (el.innerText || '').trim() : '');
+            // A checkbox/radio's .value is "on"/"true" whether or not it is
+            // ticked; `checked` is the fact anyone cares about.
+            let shown;
+            if (el.type === 'checkbox' || el.type === 'radio') {
+              shown = el.checked ? 'checked' : '';
+            } else {
+              shown = el.value || (isWidget ? (el.innerText || '').trim() : '');
+            }
             out.push({
               label: label.trim().replace(/\\s+/g, ' '),
               selector: '[data-jobagent="' + handle + '"]',
@@ -204,45 +223,62 @@ async def choose_option(page, selector: str, wanted: str) -> tuple[bool, str]:
         except Exception:  # noqa: BLE001
             return ""
 
+    def matches(shown: str) -> bool:
+        """Accent-insensitive, like the option matching itself.
+
+        Comparing literally made the check reject its OWN success: it set
+        "Distrito Capital de Bogotá" correctly and then reported failure
+        because the file spells it without the accent.
+        """
+        return strip_accents(wanted).casefold() in strip_accents(shown).casefold()
+
     try:
         await page.click(selector, timeout=4000)
         await page.wait_for_timeout(250)
         await page.keyboard.type(wanted, delay=25)
         await page.wait_for_timeout(700)
 
-        options = page.locator('[role="option"]')
-        count = await options.count()
-        target, exact = None, 0
-        for index in range(min(count, 25)):
-            option = options.nth(index)
-            text = ((await option.inner_text()) or "").strip()
-            if text.lower() == wanted.lower():
-                exact += 1
-                if target is None:
-                    target = option
-        if target is None:
+        # Pull every option's text in ONE call, then match here. Asking the
+        # browser 251 times is slow, and get_by_role(exact=True) is literal —
+        # it can never match "Distrito Capital de Bogota" against the form's
+        # accented "Distrito Capital de Bogotá", which is most of Colombia's
+        # state list.
+        texts = await page.evaluate(
+            "() => Array.from(document.querySelectorAll('[role=option]'))"
+            ".map(o => (o.innerText || '').trim())"
+        )
+        total = len(texts)
+        want = strip_accents(wanted).casefold()
+        hits = [i for i, t in enumerate(texts) if strip_accents(t).casefold() == want]
+        if not hits:
+            near = [t for t in texts if want in strip_accents(t).casefold()][:3]
             await page.keyboard.press("Escape")
-            return False, f"no option exactly matching {wanted!r} among {count} shown"
-
+            hint = f" (close: {', '.join(near)})" if near else ""
+            return False, f"no option matching {wanted!r} among {total} shown{hint}"
+        if len(hits) > 1:
+            await page.keyboard.press("Escape")
+            return False, f"{len(hits)} options match {wanted!r} — ambiguous"
+        exact = 1
+        target = page.locator('[role="option"]').nth(hits[0])
+        await target.scroll_into_view_if_needed(timeout=4000)
         await target.click(timeout=4000)
         await page.wait_for_timeout(500)
-        if wanted.lower() in (await shown_value()).lower():
+        if matches(await shown_value()):
             return True, wanted
 
-        # The click reverted. Escalate only when one option is on screen.
-        if count == 1 and exact == 1:
+        # The click reverted. Escalate only when the target was unambiguous:
+        # we located exactly one exact match and just clicked it, so it is the
+        # active option and Enter commits that, not a neighbour.
+        if exact == 1:
             await page.keyboard.press("Enter")
             await page.wait_for_timeout(500)
             after = await shown_value()
-            if wanted.lower() in after.lower():
-                return True, f"{wanted} (committed with Enter)"
+            if matches(after):
+                return True, f"{after} (committed with Enter)"
             return False, f"click and Enter both reverted; shows {after!r}"
 
         await page.keyboard.press("Escape")
-        return False, (
-            f"click did not stick and {count} options were on screen — "
-            "not pressing Enter with more than one"
-        )
+        return False, "click did not stick and the target was ambiguous"
     except Exception as exc:  # noqa: BLE001 - report, never abort the run
         try:
             await page.keyboard.press("Escape")

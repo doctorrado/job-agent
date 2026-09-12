@@ -1441,3 +1441,44 @@ than one option showing, it presses Escape and reports instead.
 Proved against a mock that reverts on click exactly as Workday does:
 "Colombia" -> `Colombia (committed with Enter)`, widget reads Colombia.
 "Co" (three matches) -> refused, widget untouched, no Enter pressed.
+
+### Second live Workday run — five more bugs (2026-09-12)
+
+20 fields found, 0 filled. Everything below came from the real form; none of
+it was reachable from a mock.
+
+1. **Only the first 25 options were examined.** Workday renders all 251
+   countries at once, so Colombia was never looked at — hence "no option
+   exactly matching 'Colombia' among 251 shown". Option texts are now pulled
+   in ONE `evaluate` call and matched in Python: faster than 251 round-trips
+   and it can do things `get_by_role(exact=True)` cannot.
+
+2. **Exact matching could never work in Spanish.** The form says "Distrito
+   Capital de Bogotá"; `contact.yaml` says "Bogota". Matching is
+   accent-insensitive now — and so is the verification afterwards, which had
+   been rejecting its OWN success: it set the state correctly and then
+   reported failure because the accents differed.
+
+3. **Labels carried their own value.** Workday writes aria-label as "Country
+   United States of America Required" and "State Select One Required", so the
+   label never matched an answer AND the current value polluted it. Trailing
+   "Required" / "Select One" are stripped in the page, before the label
+   reaches Python.
+
+4. **Page chrome was treated as form fields**: "utility Menu Button" three
+   times (language picker, settings, account), "main menu", "items selected".
+   Filtered out.
+
+5. **"Phone Device Type" was answered with the phone number**, because it
+   matched the generic phone pattern. It wants Mobile/Home/Work; `Contact`
+   now carries `phone_device_type: Mobile`.
+
+Also: checkbox and radio `current_value` read `.value`, which is "on"/"true"
+whether or not the control is ticked. It reads `checked` now — "I have a
+preferred name" was reported as already set when it was not.
+
+The Enter guard also changed, from "only one option on screen" to "only one
+EXACT match". The original guard was unusable on a 251-option list, and the
+real safety property was always unambiguity of the target, not brevity of the
+list: we locate exactly one match and click it, so it is the active option
+and Enter commits that rather than a neighbour.

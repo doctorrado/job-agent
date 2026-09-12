@@ -93,3 +93,10 @@ def test_relocation_answer_does_not_claim_he_is_already_there():
 def test_everything_still_works_without_a_contact_file():
     assert resolve("What is your email address?", _profile(), None) is None
     assert resolve("How many years of Python?", _profile(), None).answer == "3"
+
+
+def test_phone_device_type_is_not_the_phone_number():
+    """"Phone Device Type" matched the generic phone pattern and was answered
+    with the number itself. It wants Mobile/Home/Work."""
+    answer = resolve("Phone Device Type", _profile(), _contact())
+    assert answer is not None and answer.answer == "Mobile"
