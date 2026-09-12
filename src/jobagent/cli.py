@@ -21,6 +21,7 @@ import yaml
 from jobagent import __version__
 from jobagent.answers.form import Outcome, clean_label, fill_form
 from jobagent.answers.resolve import ResolvedAnswer, resolve
+from jobagent.browser.workday import CDP_ENDPOINT, apply_answers, read_fields
 from jobagent.config import get_settings, load_contact, load_history, load_profile
 from jobagent.discovery.ats_probe import Candidate, ProbeState, is_probeable, probe_company
 from jobagent.logging import configure_logging, get_logger
@@ -1015,3 +1016,93 @@ def fill_command(
         typer.echo("\nBank the ones you answer, so the next form knows them:")
         for field in unknown[:6]:
             typer.echo(f'   jobagent remember -q "{field.label}" -a "<answer>"')
+
+
+@app.command("autofill")
+def autofill_command(
+    endpoint: str = typer.Option(CDP_ENDPOINT, help="Chrome debug endpoint"),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Show what would be filled without typing anything"
+    ),
+) -> None:
+    """Fill the application form open in your browser. Never submits it.
+
+    Start Chrome once with debugging enabled, log in and navigate to the form
+    yourself, then run this:
+
+        google-chrome --remote-debugging-port=9222
+        # this machine has Chrome Canary:
+        /opt/google/chrome-canary/google-chrome-canary --remote-debugging-port=9222
+
+    It attaches to that browser — your session, your profile — reads the
+    visible fields, and types only what it can answer. Dropdowns, uploads,
+    passwords and anything sensitive are left for you, and listed at the end.
+    Submit is always yours.
+    """
+    import asyncio
+
+    settings = get_settings()
+    profile = load_profile(settings.profile_path)
+    contact = load_contact()
+    history = load_history()
+    answers_repo = AnswerRepository(make_session_factory(settings.db_path)())
+
+    async def run() -> None:
+        from playwright.async_api import async_playwright
+
+        async with async_playwright() as pw:
+            try:
+                browser = await pw.chromium.connect_over_cdp(endpoint)
+            except Exception as exc:  # noqa: BLE001
+                typer.echo(
+                    f"Could not attach to Chrome at {endpoint} ({type(exc).__name__}).\n"
+                    "Start it with:  google-chrome --remote-debugging-port=9222\n"
+                    "then open the application form and run this again."
+                )
+                raise typer.Exit(1) from exc
+
+            contexts = browser.contexts
+            pages = [p for ctx in contexts for p in ctx.pages]
+            if not pages:
+                typer.echo("No open tabs found in that browser.")
+                raise typer.Exit(1)
+            page = pages[-1]
+            typer.echo(f"Attached to: {page.url[:90]}\n")
+
+            fields = await read_fields(page)
+            if not fields:
+                typer.echo("No fillable fields found on this page.")
+                return
+
+            labels = [f"{f['label']}{'*' if f['required'] else ''}" for f in fields]
+            banked = {}
+            for raw in labels:
+                label = clean_label(raw)
+                hit = answers_repo.lookup(label)
+                if hit is not None:
+                    banked[label] = ResolvedAnswer(answer=hit.answer, source="answer bank")
+            resolved = fill_form(labels, profile, contact, banked, history)
+
+            if dry_run:
+                for field, answer in zip(fields, resolved, strict=False):
+                    state = (
+                        answer.answer[:50]
+                        if answer.outcome is Outcome.ANSWERED
+                        else f"-- {answer.outcome.value}"
+                    )
+                    typer.echo(f"  {field['label'][:40]:40} [{field['kind']:8}] {state}")
+                typer.echo(f"\n{len(fields)} fields found. Nothing typed (--dry-run).")
+                return
+
+            report = await apply_answers(page, fields, resolved)
+            for label, value in report["filled"]:
+                typer.echo(f"  filled   {label[:38]:38} {value[:40]}")
+            typer.echo("")
+            for label, why in report["skipped"]:
+                typer.echo(f"  SKIPPED  {label[:38]:38} {why}")
+            typer.echo(
+                f"\n{len(report['filled'])} filled, {len(report['skipped'])} left for you. "
+                "Nothing was submitted."
+            )
+
+    asyncio.run(run())

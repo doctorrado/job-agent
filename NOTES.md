@@ -1240,3 +1240,57 @@ What was declined: recording a flat "2-3 years professional experience" that
 overrides the distinction, because it would produce a false answer to the
 bottom row. What was delivered: the number he wanted, on the questions that
 actually decide whether he gets read.
+
+## 2026-09-12 — Phase 7: `jobagent autofill`
+
+The paste-the-questions workflow was rejected, correctly: if Andres is
+copying labels by hand the work has moved, not gone. So the browser half got
+built.
+
+### It attaches to HIS browser rather than launching its own
+
+    google-chrome --remote-debugging-port=9222     # he starts it, logs in
+    jobagent autofill                              # attaches over CDP
+
+Three reasons this beats launching a fresh browser:
+
+* **No credential handling.** He is already signed in to the ATS candidate
+  account; nothing needs his password.
+* **It is his real profile**, not an automation-flavoured one.
+* **He keeps navigation and the submit button.** Driving your own browser to
+  fill your own application is not scraping — that line was drawn on
+  2026-09-07 and this stays on the right side of it.
+
+Also avoids Playwright's ~300MB browser download entirely.
+
+### What it refuses to touch
+
+Reported, never guessed. `apply_answers` returns a report rather than a
+boolean, and the SKIPPED half is the useful one — it is exactly the list of
+what Andres still has to do:
+
+    password fields     never auto-filled, whatever the answer layer says
+    sensitive           refused upstream, and refused again here
+    not known           left blank; a wrong answer is worse than a blank one
+    already filled      never overwritten
+    select / file       a dropdown or upload needs a real choice
+    no stable selector  skipped rather than guessed at
+
+Nothing clicks Submit. There is no code path that can.
+
+### Verified against a mock Workday form
+
+10 fields found, hidden input correctly excluded, 5 filled, 5 skipped for the
+right reasons, DOM values confirmed after the fact.
+
+**Bug it caught:** the page label reads "First Name*" while the answer is
+keyed "First Name", so matching raw against cleaned silently missed EVERY
+required field — the ones that matter most. Both sides are cleaned now, and
+a test locks it.
+
+### Environment note
+
+This machine has Chrome **Canary** at `/opt/google/chrome-canary/`, not stock
+Chrome, so Playwright's `channel="chrome"` fails. Irrelevant to the real
+flow (CDP attaches to whatever he started) but it is why the test harness
+passes `executable_path`.
