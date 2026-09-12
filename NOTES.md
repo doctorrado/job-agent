@@ -738,6 +738,25 @@ Submit himself.
 7. **Bullet reordering** (same safe "same words, different order" property as
    the skills line). Bullet *rewording* stays with the LLM pass, gated on his
    approval per bullet.
+8. **Seniority as a hard gate, not a scored category (Andres's idea, v2).**
+   His argument: seniority is disqualifying rather than merely costly, so it
+   belongs with the early-return filters (work auth, internship, language,
+   salary floor) instead of contributing points that skills can outweigh.
+   Measured against the 440 verdicts on 2026-09-12 — what each candidate rule
+   would throw away:
+
+   | rule | excluded | not_a_fit | unsure | **wanted** |
+   |---|---|---|---|---|
+   | senior TITLE | 52 | 47 | 5 | **0** |
+   | years > max_years (3) | 30 | 29 | 1 | **0** |
+   | senior title OR years > 5 | 53 | 47 | 6 | **0** |
+   | detect_seniority (reads prose) | 59 | 50 | 8 | **1** |
+
+   A senior-title gate costs nothing he wanted. Only the prose-based detector
+   costs a real job, and the damper already stopped using it. Left as v2 at
+   his call, not because the evidence is thin. If built: exclude on
+   `has_senior_title(job) or years_required > max_years_experience`, and give
+   `rank` a way to show what was gated, the way `--all` reveals not_a_fit.
 
 Deliberately NOT on this list: scraping LinkedIn/Indeed/Glassdoor, and
 Workday's undocumented `/wday/cxs/` endpoint for FETCHING. Applying through
