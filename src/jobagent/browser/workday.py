@@ -123,7 +123,11 @@ async def describe_fields(page) -> list[dict]:
         tag: el.tagName.toLowerCase(),
         type: el.type || '',
         role: el.getAttribute('role') || '',
-        label: (el.getAttribute('aria-label') || '').slice(0, 44),
+        label: ((el.getAttribute('aria-label') ||
+                 (el.labels && el.labels[0] ? el.labels[0].innerText : '') ||
+                 '')).trim().slice(0, 44),
+        controls: (el.getAttribute('aria-controls') || '').slice(0, 18),
+        activedesc: el.getAttribute('aria-activedescendant') ? 'y' : '',
         haspopup: el.getAttribute('aria-haspopup') || '',
         expanded: el.getAttribute('aria-expanded') || '',
         autocomplete: el.getAttribute('aria-autocomplete') || '',
@@ -445,9 +449,31 @@ async def apply_answers(
             continue
         try:
             await page.fill(selector, answer.answer)
-            filled.append((label, answer.answer))
         except Exception as exc:  # noqa: BLE001 - report, never abort the run
             skipped.append((label, f"could not fill: {type(exc).__name__}"))
+            continue
+
+        # Did it stick? Some Workday fields LOOK like text boxes and are
+        # really comboboxes — Country Phone Code is a multi-select listbox
+        # whose typed value is discarded unless it is committed. Four rounds
+        # were spent trying to identify those from their markup; checking
+        # whether the value survived is simpler and works whatever they are.
+        stuck = await page.evaluate(
+            "(sel) => { const el = document.querySelector(sel);"
+            " return el ? (el.value || '') : ''; }",
+            selector,
+        )
+        if strip_accents(answer.answer).casefold() in strip_accents(stuck).casefold():
+            filled.append((label, answer.answer))
+            continue
+        if not choose:
+            skipped.append((label, f"typed it but it did not stick (shows {stuck!r})"))
+            continue
+        ok, detail = await choose_option(page, selector, answer.answer)
+        if ok:
+            filled.append((label, detail))
+        else:
+            skipped.append((label, f"typed it, did not stick, and {detail}"))
 
     return {"filled": filled, "skipped": skipped}
 

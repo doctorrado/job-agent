@@ -1102,7 +1102,7 @@ def autofill_command(
                 rows = await describe_fields(page)
                 typer.echo(
                     f"{'label':30} {'tag':8} {'type':9} {'role':10} "
-                    f"{'popup':9} {'exp':6} {'auto':5} {'ro':3} value"
+                    f"{'popup':9} {'exp':6} {'auto':5} {'ro':3} {'ctl':6} value"
                 )
                 for row in rows:
                     if not (row["label"] or row["automation"]):
@@ -1111,7 +1111,7 @@ def autofill_command(
                         f"{row['label'][:30]:30} {row['tag']:8} {row['type'][:9]:9} "
                         f"{row['role'][:10]:10} {row['haspopup'][:9]:9} "
                         f"{row['expanded'][:6]:6} {row['autocomplete'][:5]:5} "
-                        f"{row['readonly']:3} {row['value'][:26]}"
+                        f"{row['readonly']:3} {row.get('activedesc',''):6} {row['value'][:26]}"
                     )
                 typer.echo(f"\n{len(rows)} elements. Nothing touched (--debug).")
                 return

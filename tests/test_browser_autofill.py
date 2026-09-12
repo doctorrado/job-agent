@@ -9,16 +9,27 @@ from jobagent.browser.workday import _looks_like_password, apply_answers
 
 
 class _FakePage:
-    """Records fill() calls instead of touching a browser."""
+    """Records fill() calls instead of touching a browser.
 
-    def __init__(self, fail_on: str | None = None) -> None:
+    `sticky` mimics a normal text box (the typed value survives); False mimics
+    Workday's combobox-pretending-to-be-a-textbox, which discards it.
+    """
+
+    def __init__(self, fail_on: str | None = None, sticky: bool = True) -> None:
         self.filled: list[tuple[str, str]] = []
         self.fail_on = fail_on
+        self.sticky = sticky
+        self._values: dict[str, str] = {}
 
     async def fill(self, selector: str, value: str) -> None:
         if self.fail_on and self.fail_on in selector:
             raise RuntimeError("detached")
         self.filled.append((selector, value))
+        if self.sticky:
+            self._values[selector] = value
+
+    async def evaluate(self, script: str, arg=None):
+        return self._values.get(arg, "")
 
 
 def _field(label, kind="text", value="", selector=None, required=False):
@@ -251,3 +262,32 @@ def test_an_opaque_id_is_not_treated_as_a_displayed_value():
     )
     why = report["skipped"][0][1]
     assert "e8106cd6" in why or "WRONG" in why  # reported, never silently accepted
+
+
+def test_a_text_fill_that_does_not_stick_is_reported():
+    """Country Phone Code looks like a text box and is really a multi-select
+    listbox: page.fill() types the value and it is discarded. Reporting
+    success there is how it looked "filled" for four rounds while the field
+    stayed on Colombia (+57)."""
+    import asyncio
+
+    page = _FakePage(sticky=False)
+    report = asyncio.run(
+        apply_answers(
+            page,
+            [_field("Country Phone Code")],
+            [_answer("Country Phone Code", answer="United States of America")],
+        )
+    )
+    assert report["filled"] == []
+    assert "did not stick" in report["skipped"][0][1]
+
+
+def test_a_normal_text_field_still_reports_filled():
+    import asyncio
+
+    page = _FakePage(sticky=True)
+    report = asyncio.run(
+        apply_answers(page, [_field("City")], [_answer("City", answer="Bogota")])
+    )
+    assert report["filled"] == [("City", "Bogota")]

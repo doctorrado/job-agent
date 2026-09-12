@@ -1656,3 +1656,31 @@ Running tally of ways this widget hides its state: `.value` (an id),
 places, and the right answer is different per widget — hence checking several
 and treating a match in any as "already correct". Not touching a correct field
 is worth more than being sure why it is correct.
+
+### Stop guessing markup; check whether the value survived (2026-09-12)
+
+`--debug` finally showed what Country Phone Code is, and it is not an input:
+
+    items selected                 ul       listbox
+    Colombia (+57), press delete t div      option
+
+A **multi-select listbox with a chip already in it**. "press delete to remove"
+is the widget telling you the old value must go before a new one lands.
+
+More useful than that specific discovery: `page.fill()` had been reporting
+success on it for four rounds. The value was typed and silently discarded,
+and the report said "filled" — so every round I went looking for a detection
+bug while the real problem was that nothing verified the outcome.
+
+The fix is behavioural rather than structural: fill the field, read it back,
+and if the value did not survive, retry it as a dropdown (with `--choose`) or
+say plainly that it did not stick. That works whatever the widget is made of,
+and needs no theory about Workday's markup.
+
+Detection by markup was the wrong approach from the start. Four rounds of
+`role=combobox`, then `aria-haspopup`, then `aria-expanded`, then
+`aria-autocomplete` — each caught some widgets and missed others, because
+Workday builds these several different ways. Behaviour is one rule.
+
+`--debug` also now shows `<label for>` text and `aria-activedescendant`,
+since aria-label alone hid the very field being chased.
