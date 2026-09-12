@@ -1574,3 +1574,21 @@ the new stale-selector guard working exactly as intended: Country had just
 changed, Workday re-rendered, and the stamped attribute was gone. Running
 again is the right answer, and it is also why the field vanished — Colombia
 has no State on this form.
+
+### An input that is really a dropdown (2026-09-12)
+
+Country Phone Code is an `<input role="combobox">`. It looks like a text box,
+so it was filled with `page.fill` — the value appeared and was never
+committed, and Workday reverted it to Colombia (+57). Andres spotted it:
+"you are choosing the right one but you havent clicked enter".
+
+Kind detection now treats any element with `role=combobox`/`listbox`,
+`aria-haspopup=listbox`, or an `aria-expanded` attribute as a dropdown,
+whatever its tag. Those go through click-type-Enter-verify instead of fill.
+
+Deliberately NOT included: `aria-autocomplete`. City carries it on the real
+form and is a plain text box that fills correctly — treating it as a dropdown
+would have broken a field that already worked. Widening a rule until it
+catches the failing case is how you break the passing ones.
+
+Maternal surname confirmed as Gil and recorded.

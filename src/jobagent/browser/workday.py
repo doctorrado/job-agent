@@ -155,9 +155,19 @@ async def read_fields(page) -> list[PageField]:
                          .replace(/\\s*Select One\\s*$/i, '')
                          .replace(/\\s*\\(required\\)\\s*$/i, '')
                          .trim();
+            // An <input role="combobox"> IS a dropdown, however much it
+            // looks like a text box. Country Phone Code is exactly that: text
+            // typed into it is never committed, so it kept reverting to
+            // Colombia (+57) after being "filled" with the right value.
+            const role = el.getAttribute('role');
             const isWidget = el.tagName === 'BUTTON' ||
-                             el.getAttribute('role') === 'combobox' ||
-                             el.getAttribute('role') === 'listbox';
+                             role === 'combobox' ||
+                             role === 'listbox' ||
+                             el.getAttribute('aria-haspopup') === 'listbox' ||
+                             (el.getAttribute('aria-expanded') !== null);
+            // NOT aria-autocomplete: City carries it on the real form and is
+            // a plain text box that fills correctly. Treating it as a
+            // dropdown would break a field that already works.
             let kind = 'text';
             if (el.tagName === 'SELECT') kind = 'select';
             else if (isWidget) kind = 'dropdown';

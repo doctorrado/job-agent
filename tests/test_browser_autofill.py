@@ -200,3 +200,19 @@ def test_page_chrome_and_label_noise_are_handled():
     # what Python must handle is the asterisk and numbering
     assert clean_label("1. Phone Number*") == "Phone Number"
 
+
+
+def test_an_input_that_is_really_a_combobox_is_treated_as_a_dropdown():
+    """Country Phone Code is an <input role="combobox">. Filled as text, the
+    value was never committed and reverted to Colombia (+57)."""
+    import asyncio
+
+    page, report = asyncio.run(
+        _run(
+            [_field("Country Phone Code", kind="dropdown", value="Colombia (+57)")],
+            [_answer("Country Phone Code", answer="United States of America (+1)")],
+        )
+    )
+    # without --choose it is reported as wrong, never typed into
+    assert page.filled == []
+    assert "WRONG" in report["skipped"][0][1]
