@@ -181,42 +181,68 @@ async def read_fields(page) -> list[PageField]:
 async def choose_option(page, selector: str, wanted: str) -> tuple[bool, str]:
     """Pick `wanted` in a Workday combobox, or report why not.
 
-    Click to open, type to filter, then CLICK the option whose text matches.
-    Deliberately never presses Enter: in some forms Enter submits, and this
-    tool must have no path that can submit an application.
+    Click to open, type to filter, then commit the option whose text matches
+    EXACTLY. Never a prefix, never the first result, never a guess — a mock
+    run showed "Co" filtering to Colombia, Comoros AND Costa Rica, and a tool
+    that took the first would pick a different country depending on sort order.
 
-    Always verifies afterwards by reading the widget back. A dropdown left
-    showing the wrong country is the exact failure this is meant to fix, so
-    "I clicked something" is not good enough — it has to end up right.
+    Committing escalates, because clicking alone is not enough on real
+    Workday: it updates the widget visually and then reverts. So:
+
+      1. click the exact-match option, and verify the widget kept it
+      2. only if that reverted, press Enter — and only with exactly ONE
+         option on screen, so there is nothing else Enter could land on
+
+    Enter is the escalation rather than the default because in a plain form
+    Enter submits. Andres confirmed on 2026-09-12 that Workday's combobox
+    consumes it as a selection and does not advance the application; the
+    single-option guard is what keeps that bounded.
     """
+    async def shown_value() -> str:
+        try:
+            return ((await page.locator(selector).inner_text()) or "").strip()
+        except Exception:  # noqa: BLE001
+            return ""
+
     try:
         await page.click(selector, timeout=4000)
         await page.wait_for_timeout(250)
-        # Type into whatever now has focus; Workday moves focus into a
-        # filter input when the widget opens.
         await page.keyboard.type(wanted, delay=25)
-        await page.wait_for_timeout(600)
+        await page.wait_for_timeout(700)
 
         options = page.locator('[role="option"]')
         count = await options.count()
-        target = None
+        target, exact = None, 0
         for index in range(min(count, 25)):
             option = options.nth(index)
             text = ((await option.inner_text()) or "").strip()
             if text.lower() == wanted.lower():
-                target = option
-                break
+                exact += 1
+                if target is None:
+                    target = option
         if target is None:
             await page.keyboard.press("Escape")
             return False, f"no option exactly matching {wanted!r} among {count} shown"
 
         await target.click(timeout=4000)
-        await page.wait_for_timeout(400)
+        await page.wait_for_timeout(500)
+        if wanted.lower() in (await shown_value()).lower():
+            return True, wanted
 
-        shown = (await page.locator(selector).inner_text() or "").strip()
-        if wanted.lower() in shown.lower():
-            return True, shown
-        return False, f"clicked it but the widget still shows {shown!r}"
+        # The click reverted. Escalate only when one option is on screen.
+        if count == 1 and exact == 1:
+            await page.keyboard.press("Enter")
+            await page.wait_for_timeout(500)
+            after = await shown_value()
+            if wanted.lower() in after.lower():
+                return True, f"{wanted} (committed with Enter)"
+            return False, f"click and Enter both reverted; shows {after!r}"
+
+        await page.keyboard.press("Escape")
+        return False, (
+            f"click did not stick and {count} options were on screen — "
+            "not pressing Enter with more than one"
+        )
     except Exception as exc:  # noqa: BLE001 - report, never abort the run
         try:
             await page.keyboard.press("Escape")

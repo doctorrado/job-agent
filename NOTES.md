@@ -1417,3 +1417,27 @@ get set correctly.
 
 Real `<select>` elements skip all of this and use `select_option`, which needs
 no guessing at all.
+
+### Enter, as an escalation (2026-09-12)
+
+Clicking the option is not enough on real Workday: Andres watched it open the
+dropdown, select Colombia, and then revert to United States of America. The
+widget needs the selection COMMITTED, which is what Enter does.
+
+He confirmed from experience that Enter in a Workday combobox selects the
+option and does not advance the application. Taken at his word — he has used
+it, and this had been guessed at from the outside — but implemented as an
+escalation rather than a default, with a hard guard:
+
+1. click the exact-match option, then verify the widget kept it
+2. only if it reverted, press Enter — **and only when exactly ONE option is
+   on screen**, so there is nothing else Enter could land on
+3. verify again afterwards
+
+Enter is the fallback rather than the first move because in a plain HTML form
+Enter submits. The single-option guard is what keeps that bounded: with more
+than one option showing, it presses Escape and reports instead.
+
+Proved against a mock that reverts on click exactly as Workday does:
+"Colombia" -> `Colombia (committed with Enter)`, widget reads Colombia.
+"Co" (three matches) -> refused, widget untouched, no Enter pressed.
