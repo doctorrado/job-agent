@@ -1533,3 +1533,44 @@ not pressing Enter" and the sign-out never fires.
 General rule this should have followed: **a blind keystroke is an action on
 the whole page, not on a field.** Anything that types or presses a key must
 first prove it is talking to the thing it thinks it is.
+
+### It works — 9 of 15, and the form changed underneath it (2026-09-12)
+
+First fully successful live run on IQVIA's Workday application: Country,
+Given Name, Family Name, Address, City, Postal Code, Phone Device Type,
+Country Phone Code and Phone Number all filled.
+
+**Setting Country to Colombia rewrote the form**, which is worth recording
+because it will happen on every Latin American application:
+
+    First Name*   ->  Given Name(s)*
+    Last Name*    ->  Father's Family Name* + Mother's Family Name
+    State*        ->  gone entirely
+    phone code    ->  silently reset to Colombia (+57)
+
+Three consequences handled:
+
+1. **Split surnames.** Patterns for "Father's/Mother's Family Name" and
+   "primer/segundo apellido", ordered before the generic "family name" rule
+   which they contain. `Contact` gains optional `paternal_surname` /
+   `maternal_surname`.
+2. **Country Phone Code is the country of the PHONE, not of residence.**
+   Workday reset it to Colombia (+57) for a +1 number. The dropdown lists
+   "United States of America (+1)", not "+1", so `phone_country_choice`
+   provides the full label.
+3. **An empty specific answer must not fall through.** "Mother's Family Name"
+   matched, found nothing, and the loop continued to the generic rule — which
+   handed it the FATHER's surname. First match now wins even when empty,
+   because an empty specific answer means "not known", and that is the truth.
+
+Still open: the maternal surname itself. His email is andrestorradogil@, so it
+may be Gil, but `contact.yaml` says "Andres Torrado" and guessing a legal name
+is not something to do quietly.
+
+### And a note on the field that "moved"
+
+State reported "the field moved before it could be used — run again". That was
+the new stale-selector guard working exactly as intended: Country had just
+changed, Workday re-rendered, and the stamped attribute was gone. Running
+again is the right answer, and it is also why the field vanished — Colombia
+has no State on this form.

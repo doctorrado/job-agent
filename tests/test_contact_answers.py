@@ -41,7 +41,10 @@ def test_workday_splits_the_phone_across_three_boxes():
     """It asks Country Phone Code, Phone Number and Phone Extension
     separately. A generic "phone" match put the full number into all three."""
     contact = _contact()
-    assert resolve("Country Phone Code*", _profile(), contact).answer == "+1"
+    # the dropdown lists a country NAME plus code, not a bare "+1"
+    assert resolve("Country Phone Code*", _profile(), contact).answer == (
+        "United States of America (+1)"
+    )
     assert resolve("Phone Number*", _profile(), contact).answer == "555 000 0000"
     assert resolve("Phone Extension", _profile(), contact) is None
 
@@ -100,3 +103,19 @@ def test_phone_device_type_is_not_the_phone_number():
     with the number itself. It wants Mobile/Home/Work."""
     answer = resolve("Phone Device Type", _profile(), _contact())
     assert answer is not None and answer.answer == "Mobile"
+
+
+def test_split_surnames_do_not_borrow_from_each_other():
+    """Setting Country to Colombia made Workday relabel Last Name as
+    "Father's Family Name" + "Mother's Family Name". An empty maternal
+    surname fell through to the generic "family name" rule and was given the
+    paternal one."""
+    contact = _contact(full_name="Andres Torrado")
+    assert resolve("Given Name(s)*", _profile(), contact).answer == "Andres"
+    assert resolve("Father's Family Name*", _profile(), contact).answer == "Torrado"
+    assert resolve("Mother's Family Name", _profile(), contact) is None
+
+
+def test_an_explicit_maternal_surname_is_used():
+    contact = _contact(full_name="Andres Torrado", maternal_surname="Gil")
+    assert resolve("Mother's Family Name", _profile(), contact).answer == "Gil"

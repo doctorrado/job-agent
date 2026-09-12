@@ -72,7 +72,7 @@ _CONTACT_FIELDS = (
     # pattern — it was answered with the phone number itself.
     (re.compile(r"phone\s*device\s*type|device\s*type|tipo de tel[eé]fono", re.I),
      "phone_device_type"),
-    (re.compile(r"country\s*phone\s*code|c[oó]digo de pa[ií]s", re.I), "phone_country_code"),
+    (re.compile(r"country\s*phone\s*code|c[oó]digo de pa[ií]s", re.I), "phone_country_choice"),
     # Workday splits the dialling code into its own box, so a field named
     # "Phone Number" wants the national part only.
     (re.compile(r"phone\s*number|n[uú]mero de tel[eé]fono", re.I), "phone_national"),
@@ -91,7 +91,11 @@ _CONTACT_FIELDS = (
     (re.compile(r"\baddress\s*line\s*2\b", re.I), "__skip__"),
     (re.compile(r"\baddress\s*line\s*1\b|\bstreet\b|\bdirecci[oó]n\b", re.I), "address_line"),
     (re.compile(r"\b(address|domicilio)\b", re.I), "full_address"),
-    (re.compile(r"\b(first|given)\s*name\b|\bnombres?\b", re.I), "first_name"),
+    # Most specific first: Workday splits the surname on Latin American
+    # forms, and "Father's Family Name" contains "family name".
+    (re.compile(r"father'?s?\s*(family\s*)?name|primer apellido", re.I), "father_surname"),
+    (re.compile(r"mother'?s?\s*(family\s*)?name|segundo apellido", re.I), "mother_surname"),
+    (re.compile(r"\b(first|given)\s*names?\b|\bnombres?\b", re.I), "first_name"),
     (re.compile(r"\b(last|family|sur)\s*name\b|\bapellidos?\b", re.I), "last_name"),
     (re.compile(r"\b(full name|nombre completo|your name|legal name)\b", re.I), "full_name"),
 )
@@ -255,8 +259,14 @@ def resolve(
             if pattern.search(question):
                 if field == "__skip__":
                     return None  # deliberately has no answer
+                # First match wins, even when it is EMPTY. Falling through to
+                # a broader pattern gave "Mother's Family Name" the value of
+                # "Father's Family Name", because the generic "family name"
+                # rule matched next. An empty specific answer means "not
+                # known", which is the truth.
                 value = getattr(contact, field)
-                if value:
-                    return ResolvedAnswer(answer=str(value), source=f"contact.{field}")
+                if not value:
+                    return None
+                return ResolvedAnswer(answer=str(value), source=f"contact.{field}")
 
     return None

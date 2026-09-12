@@ -89,6 +89,30 @@ class Contact(BaseModel):
     relocation_note: str = ""
 
     phone_device_type: str = "Mobile"
+    # The dropdown wants a country NAME plus code, not a bare "+1", and it is
+    # the country of the PHONE — which need not be where he lives. Setting
+    # Country to Colombia made Workday reset this to Colombia (+57) for a
+    # US number.
+    phone_country_name: str = "United States of America"
+    # Latin American forms split the surname. Workday relabelled Last Name to
+    # "Father's Family Name" + "Mother's Family Name" the moment Country
+    # became Colombia.
+    paternal_surname: str = ""
+    maternal_surname: str = ""
+
+    @property
+    def phone_country_choice(self) -> str:
+        """What the Country Phone Code dropdown actually lists."""
+        return f"{self.phone_country_name} ({self.phone_country_code})"
+
+    @property
+    def father_surname(self) -> str:
+        return self.paternal_surname or self.last_name.split()[0] if self.last_name else ""
+
+    @property
+    def mother_surname(self) -> str:
+        parts = self.last_name.split()
+        return self.maternal_surname or (parts[1] if len(parts) > 1 else "")
 
     @property
     def phone_country_code(self) -> str:
