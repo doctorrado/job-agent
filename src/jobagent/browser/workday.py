@@ -119,24 +119,30 @@ async def read_fields(page) -> list[PageField]:
           const els = document.querySelectorAll(
             'input:not([type=hidden]):not([type=submit]):not([type=button]), textarea, select'
           );
+          let i = 0;
           for (const el of els) {
             const r = el.getBoundingClientRect();
             if (r.width === 0 && r.height === 0) continue;
             let label = '';
-            const id = el.getAttribute('data-automation-id');
+            const autoId = el.getAttribute('data-automation-id');
             if (el.getAttribute('aria-label')) label = el.getAttribute('aria-label');
             if (!label && el.labels && el.labels.length) label = el.labels[0].innerText;
             if (!label && el.getAttribute('placeholder')) label = el.getAttribute('placeholder');
-            if (!label && id) label = id.replace(/([a-z])([A-Z])/g, '$1 $2');
+            if (!label && autoId) label = autoId.replace(/([a-z])([A-Z])/g, '$1 $2');
             if (!label) continue;
+            // Live Workday serves these WITHOUT data-automation-id, so every
+            // selector came back empty and nothing could be filled. Stamp our
+            // own attribute instead: it always exists because we just made it.
+            const handle = 'jf' + (i++);
+            el.setAttribute('data-jobagent', handle);
             const req = el.required || el.getAttribute('aria-required') === 'true';
             out.push({
               label: label.trim().replace(/\\s+/g, ' '),
-              selector: id ? `[data-automation-id="${id}"]` : '',
+              selector: '[data-jobagent="' + handle + '"]',
               kind: el.tagName === 'SELECT' ? 'select' : (el.type || 'text'),
               required: !!req,
               current_value: el.value || '',
-              automationId: id || '',
+              automationId: autoId || '',
             });
           }
           return out;
@@ -177,6 +183,13 @@ async def apply_answers(page, fields: list[dict], answers: list[FilledField]) ->
         if _looks_like_password(label, field.get("kind", "")):
             skipped.append((label, "password field — never auto-filled"))
             continue
+        # Kind first: a radio's label is its OPTION ("Yes"/"No"), never a
+        # question, so reporting it as "not known" is noise rather than a
+        # to-do. Say what it actually is.
+        kind = field.get("kind", "")
+        if kind in ("select", "file", "checkbox", "radio"):
+            skipped.append((label, f"{kind} — choose this yourself"))
+            continue
         if answer is None or answer.outcome is Outcome.UNKNOWN:
             skipped.append((label, "not known"))
             continue
@@ -185,10 +198,6 @@ async def apply_answers(page, fields: list[dict], answers: list[FilledField]) ->
             continue
         if field.get("current_value"):
             skipped.append((label, "already filled in"))
-            continue
-        if field.get("kind") in ("select", "file", "checkbox", "radio"):
-            # Dropdowns and uploads need a real choice, not a typed string.
-            skipped.append((label, f"{field['kind']} — choose this yourself"))
             continue
 
         selector = field.get("selector") or ""

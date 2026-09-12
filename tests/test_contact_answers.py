@@ -37,10 +37,26 @@ def _contact(**overrides):
     return Contact(**data)
 
 
+def test_workday_splits_the_phone_across_three_boxes():
+    """It asks Country Phone Code, Phone Number and Phone Extension
+    separately. A generic "phone" match put the full number into all three."""
+    contact = _contact()
+    assert resolve("Country Phone Code*", _profile(), contact).answer == "+1"
+    assert resolve("Phone Number*", _profile(), contact).answer == "555 000 0000"
+    assert resolve("Phone Extension", _profile(), contact) is None
+
+
+def test_address_line_2_is_not_given_line_1s_value():
+    """"address line 1?" also matched "Address Line 2", so his street address
+    went into both."""
+    assert resolve("Address Line 1*", _profile(), _contact()).answer == "Cl. 25B"
+    assert resolve("Address Line 2", _profile(), _contact()) is None
+
+
 def test_contact_fields_are_answered():
     for question, expected in (
         ("What is your email address?", "a@example.com"),
-        ("Phone number", "+1 555 000 0000"),
+        ("Phone", "+1 555 000 0000"),
         ("LinkedIn profile URL", "linkedin.com/in/x"),
         ("What is your postal code?", "110931"),
         ("City", "Bogota"),

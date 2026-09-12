@@ -65,6 +65,13 @@ _RESIDENCE = re.compile(
 )
 _CONTACT_FIELDS = (
     (re.compile(r"\b(e-?mail|correo)\b", re.I), "email"),
+    # Order matters: "Phone Extension" and "Country Phone Code" both contain
+    # "phone", and a generic match put the full number into all three boxes.
+    (re.compile(r"\b(extension|ext\.?)\b", re.I), "__skip__"),
+    (re.compile(r"country\s*phone\s*code|c[oó]digo de pa[ií]s", re.I), "phone_country_code"),
+    # Workday splits the dialling code into its own box, so a field named
+    # "Phone Number" wants the national part only.
+    (re.compile(r"phone\s*number|n[uú]mero de tel[eé]fono", re.I), "phone_national"),
     (re.compile(r"\b(phone|tel[eé]fono|mobile|cell)\b", re.I), "phone"),
     (re.compile(r"\blinkedin\b", re.I), "linkedin"),
     (re.compile(r"\b(github|portfolio|personal website)\b", re.I), "github"),
@@ -74,7 +81,11 @@ _CONTACT_FIELDS = (
     (re.compile(r"\b(country|pa[ií]s)\b", re.I), "country"),
     # Workday splits the address across fields, so "Address Line 1" must get
     # the street alone — not the whole thing with city and country repeated.
-    (re.compile(r"\baddress\s*line\s*1?\b|\bstreet\b|\bdirecci[oó]n\b", re.I), "address_line"),
+    # "address line 1?" also matched "Address Line 2", which put his street
+    # address into the second line as well. The 1 is now required, and line 2
+    # is explicitly nothing — he has no second line.
+    (re.compile(r"\baddress\s*line\s*2\b", re.I), "__skip__"),
+    (re.compile(r"\baddress\s*line\s*1\b|\bstreet\b|\bdirecci[oó]n\b", re.I), "address_line"),
     (re.compile(r"\b(address|domicilio)\b", re.I), "full_address"),
     (re.compile(r"\b(first|given)\s*name\b|\bnombres?\b", re.I), "first_name"),
     (re.compile(r"\b(last|family|sur)\s*name\b|\bapellidos?\b", re.I), "last_name"),
@@ -238,6 +249,8 @@ def resolve(
     if contact is not None:
         for pattern, field in _CONTACT_FIELDS:
             if pattern.search(question):
+                if field == "__skip__":
+                    return None  # deliberately has no answer
                 value = getattr(contact, field)
                 if value:
                     return ResolvedAnswer(answer=str(value), source=f"contact.{field}")

@@ -1324,3 +1324,38 @@ Two more things fixed before they could bite on a real form:
   iframe, where a main-frame-only search reports "no fields found" on a page
   that visibly has plenty. Every frame is searched, cross-origin ones skipped
   quietly, duplicates removed.
+
+### First live Workday run — four bugs, two of them data-corrupting (2026-09-12)
+
+Andres ran `autofill` against a real IQVIA Workday form. 12 fields found,
+**0 filled**. The mock form had hidden every one of these.
+
+1. **Live Workday has NO `data-automation-id`.** Every selector came back
+   empty, so everything was skipped with "no stable selector". The whole
+   targeting strategy rested on an attribute the real page does not serve.
+   Fixed by stamping our own: `read_fields` sets `data-jobagent="jfN"` on each
+   element as it reads it, so the selector always exists because we just made
+   it. Works regardless of what the page provides.
+
+2. **"Address Line 2" was given Line 1's value.** The pattern was
+   `address\\s*line\\s*1?\\b` — the `1` was OPTIONAL, so it matched "Address
+   Line 2" too. His street address would have gone into both boxes. The 1 is
+   required now and Line 2 resolves to nothing.
+
+3. **All three phone boxes got the full number.** Workday splits Country
+   Phone Code / Phone Number / Phone Extension, and a generic `phone` match
+   filled "+1 786 868 9972" into each. Now: code -> "+1", number ->
+   "786 868 9972", extension -> nothing. `Contact` derives both parts.
+
+4. **Radio options reported as "not known".** A radio's label is its OPTION
+   ("Yes"/"No"), never a question, so it read as a to-do when it is simply
+   something to click. Kind is checked before the answer now.
+
+(2) and (3) are the important ones: they would have put wrong data into a
+submitted application, which is worse than filling nothing. The mock form
+could not have caught either — only a real one splits a phone number across
+three boxes.
+
+Also: `uv run` only works inside the project directory, which is not obvious
+from `error: Failed to spawn: jobagent`. Installed with
+`uv tool install --editable .` so `jobagent` is on PATH from anywhere.

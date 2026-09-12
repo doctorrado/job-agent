@@ -89,6 +89,22 @@ class Contact(BaseModel):
     relocation_note: str = ""
 
     @property
+    def phone_country_code(self) -> str:
+        """Just the dialling code. Workday asks for it in its own field, and
+        answering that with the full number produced "+1 786 868 9972" in a
+        box expecting "+1"."""
+        digits = self.phone.strip()
+        if not digits.startswith("+"):
+            return ""
+        return "+" + digits[1:].split()[0] if " " in digits else digits[:2]
+
+    @property
+    def phone_national(self) -> str:
+        """The number without its country code, for forms that ask separately."""
+        code = self.phone_country_code
+        return self.phone.replace(code, "", 1).strip() if code else self.phone
+
+    @property
     def first_name(self) -> str:
         return self.full_name.split()[0] if self.full_name else ""
 
