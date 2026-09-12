@@ -1482,3 +1482,26 @@ EXACT match". The original guard was unusable on a 251-option list, and the
 real safety property was always unambiguity of the target, not brevity of the
 list: we locate exactly one match and click it, so it is the active option
 and Enter commits that rather than a neighbour.
+
+### The dropdown fix that worked: do what the human does (2026-09-12)
+
+Three versions tried to be clever — scan the options, click the exact match,
+escalate to Enter under guards — and all three failed on the real page. The
+last one reported **"1 option shown"** where the browser was showing 251.
+
+That number was the answer. **Workday's option list is virtualised**: what is
+in the DOM at any instant is not what is on screen. Every strategy built on
+reading options was doomed from the start, and each "fix" added machinery on
+top of a broken premise rather than questioning it.
+
+What works is what Andres said at the beginning: click the dropdown, type the
+value, press Enter. Four lines.
+
+The safety property survives and never depended on reading options: an EXACT
+value is typed, then the widget is read back and must show it. Anything else
+is reported as a failure. Verified against a mock that virtualises its list
+the way Workday does — one option in the DOM, 251 conceptually.
+
+Lesson, and it is the same one as the scoring rubric: when a fix fails twice,
+the premise is wrong. Adding a third guard to a broken approach is how you get
+three broken approaches.

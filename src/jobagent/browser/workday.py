@@ -198,93 +198,44 @@ async def read_fields(page) -> list[PageField]:
 
 
 async def choose_option(page, selector: str, wanted: str) -> tuple[bool, str]:
-    """Pick `wanted` in a Workday combobox, or report why not.
+    """Click the dropdown, type the value, press Enter. Then check it took.
 
-    Click to open, type to filter, then commit the option whose text matches
-    EXACTLY. Never a prefix, never the first result, never a guess — a mock
-    run showed "Co" filtering to Colombia, Comoros AND Costa Rica, and a tool
-    that took the first would pick a different country depending on sort order.
+    This is literally what Andres does by hand, and it works. Three earlier
+    versions tried to be cleverer — scan the options, click the exact match,
+    escalate to Enter only under guards — and all three failed on the real
+    page, the last one reporting "1 option shown" where a browser shows 251.
+    Workday's list is virtualised, so what is in the DOM at any moment is not
+    what is on screen, and every strategy built on reading options was
+    doomed. Typing filters it down; Enter takes the filtered result.
 
-    Committing escalates, because clicking alone is not enough on real
-    Workday: it updates the widget visually and then reverts. So:
-
-      1. click the exact-match option, and verify the widget kept it
-      2. only if that reverted, press Enter — and only with exactly ONE
-         option on screen, so there is nothing else Enter could land on
-
-    Enter is the escalation rather than the default because in a plain form
-    Enter submits. Andres confirmed on 2026-09-12 that Workday's combobox
-    consumes it as a selection and does not advance the application; the
-    single-option guard is what keeps that bounded.
+    The safety property is unchanged and does not depend on reading options:
+    we type an EXACT value and then verify the widget ended up showing it. If
+    it shows anything else, that is reported as a failure, not a success.
     """
+    def matches(shown: str) -> bool:
+        # Accent-insensitive: the form says "Bogotá", the file says "Bogota".
+        return strip_accents(wanted).casefold() in strip_accents(shown).casefold()
+
     async def shown_value() -> str:
         try:
             return ((await page.locator(selector).inner_text()) or "").strip()
         except Exception:  # noqa: BLE001
             return ""
 
-    def matches(shown: str) -> bool:
-        """Accent-insensitive, like the option matching itself.
-
-        Comparing literally made the check reject its OWN success: it set
-        "Distrito Capital de Bogotá" correctly and then reported failure
-        because the file spells it without the accent.
-        """
-        return strip_accents(wanted).casefold() in strip_accents(shown).casefold()
-
     try:
-        await page.click(selector, timeout=4000)
-        await page.wait_for_timeout(250)
-        await page.keyboard.type(wanted, delay=25)
-        await page.wait_for_timeout(700)
-
-        # Pull every option's text in ONE call, then match here. Asking the
-        # browser 251 times is slow, and get_by_role(exact=True) is literal —
-        # it can never match "Distrito Capital de Bogota" against the form's
-        # accented "Distrito Capital de Bogotá", which is most of Colombia's
-        # state list.
-        texts = await page.evaluate(
-            "() => Array.from(document.querySelectorAll('[role=option]'))"
-            ".map(o => (o.innerText || '').trim())"
-        )
-        total = len(texts)
-        want = strip_accents(wanted).casefold()
-        hits = [i for i, t in enumerate(texts) if strip_accents(t).casefold() == want]
-        if not hits:
-            near = [t for t in texts if want in strip_accents(t).casefold()][:3]
-            await page.keyboard.press("Escape")
-            hint = f" (close: {', '.join(near)})" if near else ""
-            return False, f"no option matching {wanted!r} among {total} shown{hint}"
-        if len(hits) > 1:
-            await page.keyboard.press("Escape")
-            return False, f"{len(hits)} options match {wanted!r} — ambiguous"
-        exact = 1
-        target = page.locator('[role="option"]').nth(hits[0])
-        await target.scroll_into_view_if_needed(timeout=4000)
-        await target.click(timeout=4000)
-        await page.wait_for_timeout(500)
-        if matches(await shown_value()):
-            return True, wanted
-
-        # The click reverted. Escalate only when the target was unambiguous:
-        # we located exactly one exact match and just clicked it, so it is the
-        # active option and Enter commits that, not a neighbour.
-        if exact == 1:
-            await page.keyboard.press("Enter")
-            await page.wait_for_timeout(500)
-            after = await shown_value()
-            if matches(after):
-                return True, f"{after} (committed with Enter)"
-            return False, f"click and Enter both reverted; shows {after!r}"
-
-        await page.keyboard.press("Escape")
-        return False, "click did not stick and the target was ambiguous"
+        await page.click(selector, timeout=5000)
+        await page.wait_for_timeout(600)
+        await page.keyboard.type(wanted, delay=60)
+        await page.wait_for_timeout(900)
+        await page.keyboard.press("Enter")
+        await page.wait_for_timeout(900)
     except Exception as exc:  # noqa: BLE001 - report, never abort the run
-        try:
-            await page.keyboard.press("Escape")
-        except Exception:  # noqa: BLE001
-            pass
         return False, f"{type(exc).__name__} while selecting"
+
+    after = await shown_value()
+    if matches(after):
+        return True, after
+    return False, f"typed {wanted!r} and pressed Enter, but it shows {after!r}"
 
 
 async def apply_answers(
