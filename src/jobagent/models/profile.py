@@ -102,8 +102,15 @@ class Contact(BaseModel):
 
     @property
     def phone_country_choice(self) -> str:
-        """What the Country Phone Code dropdown actually lists."""
-        return f"{self.phone_country_name} ({self.phone_country_code})"
+        """What to TYPE into the Country Phone Code dropdown — the name only.
+
+        Not "United States of America (+1)". The widget displays the code, but
+        typing it filters to nothing, so Enter had nothing to commit. What you
+        type to filter and what the field shows afterwards are different
+        strings, and verification uses a substring check so the displayed
+        "United States of America (+1)" still confirms this.
+        """
+        return self.phone_country_name
 
     @property
     def father_surname(self) -> str:

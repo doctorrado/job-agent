@@ -42,8 +42,9 @@ def test_workday_splits_the_phone_across_three_boxes():
     separately. A generic "phone" match put the full number into all three."""
     contact = _contact()
     # the dropdown lists a country NAME plus code, not a bare "+1"
+    # the NAME only: typing "(+1)" filters the list to nothing
     assert resolve("Country Phone Code*", _profile(), contact).answer == (
-        "United States of America (+1)"
+        "United States of America"
     )
     assert resolve("Phone Number*", _profile(), contact).answer == "555 000 0000"
     assert resolve("Phone Extension", _profile(), contact) is None

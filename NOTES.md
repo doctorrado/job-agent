@@ -1592,3 +1592,21 @@ would have broken a field that already worked. Widening a rule until it
 catches the failing case is how you break the passing ones.
 
 Maternal surname confirmed as Gil and recorded.
+
+### What you type is not what the field shows (2026-09-12)
+
+The Country Phone Code dropdown was being typed as "United States of America
+(+1)" — the string it DISPLAYS. That filters to nothing, so Enter had nothing
+to commit and the value silently stayed Colombia (+57). Andres spotted it:
+"you dont havbe to write the plus +1 just the united states fo america plus
+enter works".
+
+Now types the country name alone. Verification still passes because it is a
+substring check, so the resulting "1 item selected, United States of America
+(+1)" confirms it.
+
+Worth generalising: **a dropdown's filter text and its display text are
+different strings.** Anything typed into a combobox should be the shortest
+unambiguous thing that matches, not the full label — and verification should
+be a substring check rather than equality, because the widget decorates what
+it shows.
