@@ -1044,3 +1044,22 @@ request. Verified: 34 lines before, 34 after, exactly one changed; category
 separators intact; still one page. A backup sits at
 `private/resumes/.backup_D_Eng_before_removal.docx`. The other three resumes
 never mentioned either.
+
+### Contact details for form filling (2026-09-12)
+
+`private/contact.yaml` (gitignored) holds name, email, phone, LinkedIn,
+GitHub and address; `Contact` in models/profile.py validates it; the resolver
+answers the contact fields any application form asks for. Optional by design —
+everything else works without it, and it is the most sensitive data here.
+
+One structural decision worth keeping: **residence is a separate field from
+the address**, and the residence check runs BEFORE the address patterns.
+"What country do you currently reside in?" contains the word "country", so
+without that ordering it would be answered from the address field — stating
+a fact the address does not establish. An address is where post goes; "do you
+currently live there" is a claim. Same rule as never fabricating a skill,
+applied to a different file.
+
+Andres confirmed on 2026-09-12 that he IS based in Bogota, so the flag is
+true and the answers say so plainly. The machinery for the other case is
+tested and stays, because the distinction is the point.

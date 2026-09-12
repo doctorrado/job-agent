@@ -62,3 +62,33 @@ class Profile(BaseModel):
     salary: SalaryExpectation = Field(default_factory=SalaryExpectation)
     role_keywords: RoleKeywords = Field(default_factory=RoleKeywords)
 
+
+
+class Contact(BaseModel):
+    """Contact details for filling application forms. Lives in private/.
+
+    `currently_resides_in_colombia` is deliberately separate from the address.
+    An address field is a contact detail and a Bogota one is legitimate for
+    someone relocating there; "do you currently reside in Colombia" is a
+    factual question and gets the true answer. Conflating the two would be
+    the resume-fabrication rule broken in a different file.
+    """
+
+    full_name: str
+    email: str
+    phone: str = ""
+    phone_alt: str = ""
+    linkedin: str = ""
+    github: str = ""
+    address_line: str = ""
+    postal_code: str = ""
+    city: str = ""
+    region: str = ""
+    country: str = ""
+    currently_resides_in_colombia: bool = True
+    relocation_note: str = ""
+
+    @property
+    def full_address(self) -> str:
+        parts = [self.address_line, self.postal_code, self.city, self.region, self.country]
+        return ", ".join(p for p in parts if p)

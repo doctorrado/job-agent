@@ -20,7 +20,7 @@ import yaml
 
 from jobagent import __version__
 from jobagent.answers.resolve import resolve
-from jobagent.config import get_settings, load_profile
+from jobagent.config import get_settings, load_contact, load_profile
 from jobagent.discovery.ats_probe import Candidate, ProbeState, is_probeable, probe_company
 from jobagent.logging import configure_logging, get_logger
 from jobagent.pipeline.dedupe import normalize_company, normalize_text, posting_identity
@@ -944,7 +944,7 @@ def answer_command(
         typer.echo(f"   (from the answer bank, asked {banked.times_used}x)")
         return
 
-    resolved = resolve(question, profile)
+    resolved = resolve(question, profile, load_contact())
     if resolved is None:
         typer.echo("Not known. Answer it yourself, then bank it:")
         typer.echo(f'   jobagent remember -q "{question}" -a "<your answer>"')

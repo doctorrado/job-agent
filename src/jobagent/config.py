@@ -11,7 +11,7 @@ from pathlib import Path
 import yaml
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from jobagent.models.profile import Profile
+from jobagent.models.profile import Contact, Profile
 
 
 class Settings(BaseSettings):
@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     db_path: Path = Path("data/jobs.db")
     resumes_dir: Path = Path("private/resumes")
     postings_dir: Path = Path("private/postings")
+    contact_path: Path = Path("private/contact.yaml")
 
     anthropic_api_key: str | None = None
     adzuna_app_id: str | None = None
@@ -48,3 +49,16 @@ def load_profile(path: Path) -> Profile:
         )
     data = yaml.safe_load(path.read_text(encoding="utf-8"))
     return Profile.model_validate(data)
+
+
+def load_contact(path: Path | None = None) -> Contact | None:
+    """Contact details for form filling, or None if the file does not exist.
+
+    Optional on purpose: everything else in this project works without it,
+    and it holds the most sensitive data in the repo.
+    """
+    settings = get_settings()
+    target = path or settings.contact_path
+    if not target.is_file():
+        return None
+    return Contact(**yaml.safe_load(target.read_text(encoding="utf-8")))
