@@ -222,14 +222,49 @@ async def choose_option(page, selector: str, wanted: str) -> tuple[bool, str]:
         except Exception:  # noqa: BLE001
             return ""
 
+    # GUARD 1: the element must still be the one we read. Workday is a SPA
+    # and re-renders constantly, so a stamped attribute can end up on a
+    # different element — or gone — between reading and clicking.
     try:
-        await page.click(selector, timeout=5000)
+        handle = page.locator(selector)
+        if await handle.count() != 1:
+            return False, "the field moved before it could be used — run again"
+    except Exception as exc:  # noqa: BLE001
+        return False, f"{type(exc).__name__} locating the field"
+
+    try:
+        await handle.click(timeout=5000)
         await page.wait_for_timeout(600)
+    except Exception as exc:  # noqa: BLE001
+        return False, f"{type(exc).__name__} opening the dropdown"
+
+    # GUARD 2: never type or press Enter unless a dropdown actually opened.
+    # Without this, a click that missed sent the keystrokes to whatever had
+    # focus — and Enter on the account menu signed Andres out of Workday.
+    opened = await page.evaluate(
+        """
+        (sel) => {
+          const el = document.querySelector(sel);
+          if (el && el.getAttribute('aria-expanded') === 'true') return true;
+          const boxes = document.querySelectorAll('[role=listbox], [role=option]');
+          for (const b of boxes) {
+            const r = b.getBoundingClientRect();
+            if (r.width > 0 && r.height > 0) return true;
+          }
+          return false;
+        }
+        """,
+        selector,
+    )
+    if not opened:
+        return False, "the dropdown did not open — not typing, not pressing Enter"
+
+    try:
         await page.keyboard.type(wanted, delay=60)
         await page.wait_for_timeout(900)
         await page.keyboard.press("Enter")
         await page.wait_for_timeout(900)
-    except Exception as exc:  # noqa: BLE001 - report, never abort the run
+    except Exception as exc:  # noqa: BLE001
         return False, f"{type(exc).__name__} while selecting"
 
     after = await shown_value()

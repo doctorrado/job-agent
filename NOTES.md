@@ -1505,3 +1505,31 @@ the way Workday does — one option in the DOM, 251 conceptually.
 Lesson, and it is the same one as the scoring rubric: when a fix fails twice,
 the premise is wrong. Adding a third guard to a broken approach is how you get
 three broken approaches.
+
+### The keystrokes that signed him out (2026-09-12)
+
+`choose_option` clicked the widget and then typed and pressed Enter
+**unconditionally**. When the click missed — a stale selector, a re-render,
+the wrong element — the keystrokes went to whatever had focus instead, and
+Enter on Workday's account menu signed Andres out mid-application.
+
+That is the worst failure this tool has produced: not a wrong value, an
+action taken on a page it had no business acting on.
+
+Two guards, both of which should have been there from the first version:
+
+1. **The element must still be the one we read.** Workday is a SPA and
+   re-renders constantly, so a stamped `data-jobagent` attribute can move to a
+   different element or vanish between reading and clicking. If the selector
+   no longer resolves to exactly one element, it stops.
+2. **Never type or press Enter unless a dropdown actually opened.** Checked
+   via `aria-expanded="true"` or a visible `[role=listbox]`/`[role=option]`.
+   If nothing opened, nothing is typed and no key is pressed.
+
+Proved against a page whose combobox does not open and where a Sign Out
+button holds focus: the run reports "the dropdown did not open — not typing,
+not pressing Enter" and the sign-out never fires.
+
+General rule this should have followed: **a blind keystroke is an action on
+the whole page, not on a field.** Anything that types or presses a key must
+first prove it is talking to the thing it thinks it is.
