@@ -1387,3 +1387,33 @@ Still deliberately not clicked: choosing an option in a custom widget means
 clicking it open, waiting for a listbox, and picking an entry — several steps
 that can silently select the wrong neighbour. Flagging is honest; clicking
 blind is not.
+
+### Dropdowns after all — `--choose` (2026-09-12)
+
+Andres pointed out that Workday's country widget is a TYPEAHEAD: click, type
+"COLOMBIA", it filters to one option, select it. That is a different problem
+from clicking down a list, and a tractable one.
+
+`choose_option` does it in a deliberately narrow way:
+
+1. click to open, type the value to filter
+2. **click the option whose text matches EXACTLY** — never a prefix, never
+   the first result
+3. read the widget back and confirm it now shows the wanted value
+
+Two deliberate constraints:
+
+* **Never presses Enter.** He selects with Enter by hand, but in some forms
+  Enter submits, and this tool must have no code path that can submit an
+  application. Clicking the option has the same effect with none of that risk.
+* **Exact match only.** Verified on a mock Workday combobox: "Colomb" (a
+  prefix of a real option), "Narnia" (no match) and "Co" (matches Colombia,
+  Comoros AND Costa Rica) are all refused, with the widget left untouched.
+  Only "Colombia" commits — and then the value is read back to prove it.
+
+Opt-in via `--choose`, because clicking is a bigger step than typing. Without
+it, a wrong dropdown is still reported loudly; with it, the ones we can prove
+get set correctly.
+
+Real `<select>` elements skip all of this and use `select_option`, which needs
+no guessing at all.

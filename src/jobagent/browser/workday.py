@@ -178,7 +178,56 @@ async def read_fields(page) -> list[PageField]:
     return seen
 
 
-async def apply_answers(page, fields: list[dict], answers: list[FilledField]) -> dict:
+async def choose_option(page, selector: str, wanted: str) -> tuple[bool, str]:
+    """Pick `wanted` in a Workday combobox, or report why not.
+
+    Click to open, type to filter, then CLICK the option whose text matches.
+    Deliberately never presses Enter: in some forms Enter submits, and this
+    tool must have no path that can submit an application.
+
+    Always verifies afterwards by reading the widget back. A dropdown left
+    showing the wrong country is the exact failure this is meant to fix, so
+    "I clicked something" is not good enough — it has to end up right.
+    """
+    try:
+        await page.click(selector, timeout=4000)
+        await page.wait_for_timeout(250)
+        # Type into whatever now has focus; Workday moves focus into a
+        # filter input when the widget opens.
+        await page.keyboard.type(wanted, delay=25)
+        await page.wait_for_timeout(600)
+
+        options = page.locator('[role="option"]')
+        count = await options.count()
+        target = None
+        for index in range(min(count, 25)):
+            option = options.nth(index)
+            text = ((await option.inner_text()) or "").strip()
+            if text.lower() == wanted.lower():
+                target = option
+                break
+        if target is None:
+            await page.keyboard.press("Escape")
+            return False, f"no option exactly matching {wanted!r} among {count} shown"
+
+        await target.click(timeout=4000)
+        await page.wait_for_timeout(400)
+
+        shown = (await page.locator(selector).inner_text() or "").strip()
+        if wanted.lower() in shown.lower():
+            return True, shown
+        return False, f"clicked it but the widget still shows {shown!r}"
+    except Exception as exc:  # noqa: BLE001 - report, never abort the run
+        try:
+            await page.keyboard.press("Escape")
+        except Exception:  # noqa: BLE001
+            pass
+        return False, f"{type(exc).__name__} while selecting"
+
+
+async def apply_answers(
+    page, fields: list[dict], answers: list[FilledField], choose: bool = False
+) -> dict:
     """Type the answers we have into the fields we found.
 
     Returns a report rather than a boolean: which fields were filled, which
@@ -202,6 +251,26 @@ async def apply_answers(page, fields: list[dict], answers: list[FilledField]) ->
         # question, so reporting it as "not known" is noise rather than a
         # to-do. Say what it actually is.
         kind = field.get("kind", "")
+        if kind in ("select", "dropdown") and choose and answer is not None \
+                and answer.outcome is Outcome.ANSWERED:
+            selector = field.get("selector") or ""
+            shown_now = (field.get("current_value") or "").strip()
+            if selector and answer.answer.lower() not in shown_now.lower():
+                if kind == "select":
+                    try:
+                        await page.select_option(selector, label=answer.answer)
+                        filled.append((label, answer.answer))
+                        continue
+                    except Exception:  # noqa: BLE001 - fall through to report
+                        skipped.append((label, f"could not select {answer.answer!r}"))
+                        continue
+                ok, detail = await choose_option(page, selector, answer.answer)
+                if ok:
+                    filled.append((label, detail))
+                else:
+                    skipped.append((label, f"could not choose {answer.answer!r}: {detail}"))
+                continue
+
         if kind in ("select", "file", "checkbox", "radio", "dropdown"):
             shown = (field.get("current_value") or "").strip()
             # The important case: a dropdown that is already set to something

@@ -1031,6 +1031,11 @@ def autofill_command(
     dry_run: bool = typer.Option(
         False, "--dry-run", help="Show what would be filled without typing anything"
     ),
+    choose: bool = typer.Option(
+        False,
+        "--choose",
+        help="Also pick dropdown options (types to filter, clicks the exact match, verifies)",
+    ),
 ) -> None:
     """Fill the application form open in your browser. Never submits it.
 
@@ -1121,7 +1126,7 @@ def autofill_command(
                 typer.echo(f"\n{len(fields)} fields found. Nothing typed (--dry-run).")
                 return
 
-            report = await apply_answers(page, fields, resolved)
+            report = await apply_answers(page, fields, resolved, choose=choose)
             for label, value in report["filled"]:
                 typer.echo(f"  filled   {label[:38]:38} {value[:40]}")
             typer.echo("")

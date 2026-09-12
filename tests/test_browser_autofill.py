@@ -156,3 +156,35 @@ def test_a_dropdown_already_correct_is_not_flagged():
         )
     )
     assert "WRONG" not in report["skipped"][0][1]
+
+
+def test_dropdowns_are_only_chosen_when_asked():
+    """--choose is opt-in. Without it a dropdown is reported, never clicked."""
+    import asyncio
+
+    page, report = asyncio.run(
+        _run(
+            [_field("Country", kind="dropdown", value="United States of America")],
+            [_answer("Country", answer="Colombia")],
+        )
+    )
+    assert page.filled == []
+    assert "WRONG" in report["skipped"][0][1]
+
+
+def test_a_correct_dropdown_is_not_re_selected():
+    """No point clicking through a widget that already says the right thing,
+    and every click is a chance to land on the wrong neighbour."""
+    import asyncio
+
+    async def go():
+        return await apply_answers(
+            _FakePage(),
+            [_field("Country", kind="dropdown", value="Colombia")],
+            [_answer("Country", answer="Colombia")],
+            choose=True,
+        )
+
+    report = asyncio.run(go())
+    assert report["filled"] == []
+    assert "check it" in report["skipped"][0][1]
