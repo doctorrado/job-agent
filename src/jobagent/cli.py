@@ -1147,6 +1147,28 @@ def autofill_command(
                 return
 
             report = await apply_answers(page, fields, resolved, choose=choose)
+
+            # Changing a dropdown rewrites the form: setting Country to
+            # Colombia relabels First/Last Name, drops State, and resets
+            # Country Phone Code to Colombia (+57). So anything read before
+            # that is stale, and fields created by it were never seen. Re-read
+            # and go again while progress is still being made — bounded,
+            # because a pass that fills nothing new will never start to.
+            for _ in range(2):
+                if not report["filled"]:
+                    break
+                fields = await read_fields(page)
+                if not fields:
+                    break
+                labels = [f"{f['label']}{'*' if f['required'] else ''}" for f in fields]
+                again = fill_form(labels, profile, contact, banked, history)
+                extra = await apply_answers(page, fields, again, choose=choose)
+                if not extra["filled"]:
+                    report["skipped"] = extra["skipped"]
+                    break
+                report["filled"].extend(extra["filled"])
+                report["skipped"] = extra["skipped"]
+
             for label, value in report["filled"]:
                 typer.echo(f"  filled   {label[:38]:38} {value[:40]}")
             typer.echo("")

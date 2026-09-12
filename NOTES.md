@@ -1751,3 +1751,33 @@ verifier**, because every subsequent hour is spent debugging the wrong thing.
 Three separate bugs in this session were "the action worked and the check
 called it a failure" or the reverse. Whenever something reads back a result,
 be certain it is reading the same thing the user is looking at.
+
+### Clean-page run: chip scope, and the form rewriting itself (2026-09-12)
+
+A run against a freshly reloaded form found two more.
+
+**1. Chip lookup leaked into the neighbouring field.** It walked up three
+parent levels looking for `[role=option]`, which reached the whole Phone
+section — so Phone Number, a plain text box, was handed Country Phone Code's
+chip and reported "selection is now Colombia (+57), not '786 868 9972'". It
+came within one branch of DELETING a neighbouring field's value.
+
+Now it walks up at most two levels and stops at any container holding more
+than one field control. Subtlety worth keeping: the chip's own "x" button must
+be excluded from that count, or the widget looks shared with itself and
+returns nothing.
+
+**2. Setting Country rewrites the form, including fields already done.**
+Andres: "it refreshed as usa and country phone code changes to the country it
+selectd". Confirmed — Colombia resets Country Phone Code to Colombia (+57),
+relabels First/Last Name to Given Name(s) + Father's/Mother's Family Name,
+and drops State entirely. So:
+
+* fields read before the change are stale ("the field moved before it could
+  be used")
+* fields CREATED by the change were never in the list
+* a field filled before the change can be silently undone by it
+
+`autofill` now re-reads and runs again while a pass is still filling
+something, bounded at three passes total. A pass that fills nothing new never
+will, and the bound stops it looping on a form that fights back.

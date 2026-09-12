@@ -266,14 +266,28 @@ async def selected_chips(page, selector: str) -> list[str]:
         (sel) => {
           const el = document.querySelector(sel);
           if (!el) return [];
-          // The chips live beside the field, inside a shared container.
-          let box = el.closest('[data-automation-id], div');
-          for (let i = 0; i < 3 && box && box.parentElement; i++) {
-            if (box.querySelector('[role=option]')) break;
+          // Count only controls that are FIELDS. A chip's own "x" button is
+          // part of this widget, not a competing field, and counting it made
+          // the widget look shared and returned no chips at all.
+          const controls = c =>
+            Array.from(c.querySelectorAll(
+              'input:not([type=hidden]), textarea, select, button[aria-label]'
+            )).filter(x => !x.closest('[role=option]')).length;
+          // Walk up only while the container still belongs to THIS field.
+          // Going three levels blindly reached the Phone section as a whole,
+          // so Phone Number was handed Country Phone Code's chip — and very
+          // nearly had a neighbouring field's value deleted.
+          let box = el.parentElement;
+          let found = null;
+          for (let i = 0; i < 2 && box; i++) {
+            if (box.querySelector('[role=option]') && controls(box) <= 1) {
+              found = box;
+              break;
+            }
             box = box.parentElement;
           }
-          if (!box) return [];
-          return Array.from(box.querySelectorAll('[role=option]'))
+          if (!found) return [];
+          return Array.from(found.querySelectorAll('[role=option]'))
             .map(o => ((o.getAttribute('aria-label') || o.innerText || '')).trim())
             .filter(t => /press delete|remove/i.test(t))
             .map(t => t.replace(/,?\\s*press delete.*$/i, '').trim());
