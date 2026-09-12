@@ -216,3 +216,38 @@ def test_an_input_that_is_really_a_combobox_is_treated_as_a_dropdown():
     # without --choose it is reported as wrong, never typed into
     assert page.filled == []
     assert "WRONG" in report["skipped"][0][1]
+
+
+def test_a_dropdown_whose_value_is_only_in_its_label_is_left_alone():
+    """Workday writes the current value into aria-label ("Phone Device Type
+    Mobile") while .value holds an opaque id and the display text sits in a
+    sibling. Reading only .value made correct fields look unset, so they were
+    re-selected — which is how Phone Device Type got chosen twice."""
+    import asyncio
+
+    async def go():
+        return await apply_answers(
+            _FakePage(),
+            [_field("Phone Device Type Mobile", kind="dropdown", value="")],
+            [_answer("Phone Device Type Mobile", answer="Mobile")],
+            choose=True,
+        )
+
+    report = asyncio.run(go())
+    assert report["filled"] == []
+    assert "choose this yourself" in report["skipped"][0][1]
+
+
+def test_an_opaque_id_is_not_treated_as_a_displayed_value():
+    """A GUID in .value means "unset", not "set to e8106cd6...". Without this
+    the mismatch warning would announce a wrong value that is really an id."""
+    import asyncio
+
+    _, report = asyncio.run(
+        _run(
+            [_field("Country", kind="dropdown", value="e8106cd6a3534f2dba6fdee2d41db89d")],
+            [_answer("Country", answer="Colombia")],
+        )
+    )
+    why = report["skipped"][0][1]
+    assert "e8106cd6" in why or "WRONG" in why  # reported, never silently accepted

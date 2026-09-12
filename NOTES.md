@@ -1631,3 +1631,28 @@ worse than none, because it sends you off fixing something that already works
 Both reads now try `.value` then `innerText`, and the escalation is bounded
 at two Enters: the listbox is known to be open, so they land there, but a
 third would be guessing.
+
+### Opaque option ids, and re-selecting fields that were already right (2026-09-12)
+
+`autofill` re-selected Country and Phone Device Type when both were already
+correct — Andres saw Phone Device Type get chosen twice.
+
+Cause: after switching verification to prefer `.value`, it started reading
+Workday's INTERNAL option id — "e8106cd6a3534f2dba6fdee2d41db89d". That never
+matches "Colombia", so the already-correct check failed and the field was
+re-done.
+
+Two fixes:
+
+* A value matching `^[0-9a-f]{16,}$` is an id, not a displayed value, and is
+  ignored. Display text (innerText) is preferred for widgets.
+* The **aria-label is a second source** for the current value, and often the
+  only readable one: Workday writes "Country Colombia" and "Phone Device Type
+  Mobile" into it while `.value` holds the id and the visible text sits in a
+  sibling node. The already-correct check now reads both, accent-insensitively.
+
+Running tally of ways this widget hides its state: `.value` (an id),
+`innerText` (empty for inputs), a sibling node, and the aria-label. Four
+places, and the right answer is different per widget — hence checking several
+and treating a match in any as "already correct". Not touching a correct field
+is worth more than being sure why it is correct.

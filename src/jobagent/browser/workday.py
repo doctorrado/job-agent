@@ -174,11 +174,19 @@ async def read_fields(page) -> list[PageField]:
             else if (el.type) kind = el.type;
             // A checkbox/radio's .value is "on"/"true" whether or not it is
             // ticked; `checked` is the fact anyone cares about.
+            // Workday keeps an internal option ID in .value on its
+            // comboboxes — "e8106cd6a3534f2dba6fdee2d41db89d" — and shows the
+            // real text elsewhere. Reading .value made every already-correct
+            // dropdown look unset, so they were re-selected needlessly.
+            const looksLikeId = v => /^[0-9a-f]{16,}$/i.test(v || '');
             let shown;
             if (el.type === 'checkbox' || el.type === 'radio') {
               shown = el.checked ? 'checked' : '';
+            } else if (isWidget) {
+              const text = (el.innerText || '').trim();
+              shown = text || (looksLikeId(el.value) ? '' : (el.value || ''));
             } else {
-              shown = el.value || (isWidget ? (el.innerText || '').trim() : '');
+              shown = el.value || '';
             }
             out.push({
               label: label.trim().replace(/\\s+/g, ' '),
@@ -236,8 +244,17 @@ async def choose_option(page, selector: str, wanted: str) -> tuple[bool, str]:
         """
         try:
             return await page.evaluate(
-                "(sel) => { const el = document.querySelector(sel); if (!el) return '';"
-                " return (el.value || el.innerText || '').trim(); }",
+                """
+                (sel) => {
+                  const el = document.querySelector(sel);
+                  if (!el) return '';
+                  const text = (el.innerText || '').trim();
+                  const v = el.value || '';
+                  // An opaque id is not a displayed value.
+                  const isId = /^[0-9a-f]{16,}$/i.test(v);
+                  return (text + ' ' + (isId ? '' : v)).trim();
+                }
+                """,
                 selector,
             )
         except Exception:  # noqa: BLE001
@@ -332,8 +349,17 @@ async def apply_answers(
         if kind in ("select", "dropdown") and choose and answer is not None \
                 and answer.outcome is Outcome.ANSWERED:
             selector = field.get("selector") or ""
-            shown_now = (field.get("current_value") or "").strip()
-            if selector and answer.answer.lower() not in shown_now.lower():
+            # Two sources for "what does it say now". Workday writes the
+            # current value into the aria-label ("Phone Device Type Mobile",
+            # "Country Colombia"), which is often the ONLY readable copy: the
+            # element's own .value is an opaque id and the display text can
+            # live in a sibling node. Missing this re-selected fields that
+            # were already correct.
+            shown_now = " ".join(
+                [(field.get("current_value") or ""), label]
+            ).strip()
+            if selector and strip_accents(answer.answer).casefold() \
+                    not in strip_accents(shown_now).casefold():
                 if kind == "select":
                     try:
                         await page.select_option(selector, label=answer.answer)
