@@ -1359,3 +1359,31 @@ three boxes.
 Also: `uv run` only works inside the project directory, which is not obvious
 from `error: Failed to spawn: jobagent`. Installed with
 `uv tool install --editable .` so `jobagent` is on PATH from anywhere.
+
+### Workday's custom dropdowns, and wrong prefilled values (2026-09-12)
+
+First successful live fill — 7 of 12 fields typed into a real IQVIA form. But
+Andres spotted that **Country showed "United States of America"** when it
+should say Colombia, and it had not even appeared among the 12 detected
+fields.
+
+Cause: Workday renders most "dropdowns" as custom widgets (`role=combobox`,
+`button[aria-haspopup]`), not `<select>`, so a plain input/select query misses
+them entirely. The query now includes them, and reads the chosen value from
+`innerText` because a custom widget has no `.value`.
+
+The more important half is how they are REPORTED. A dropdown that is empty is
+a neutral to-do. A dropdown already set to something **wrong** is a hazard:
+it gets submitted, and it looks filled-in so it draws no attention. Those are
+now flagged as:
+
+    SKIPPED  Country   WRONG: shows 'United States of America',
+                       should be 'Colombia' — fix this
+
+rather than listed alongside the neutral skips. Same principle as refusing to
+guess an answer: the dangerous state is the one that looks fine.
+
+Still deliberately not clicked: choosing an option in a custom widget means
+clicking it open, waiting for a listbox, and picking an entry — several steps
+that can silently select the wrong neighbour. Flagging is honest; clicking
+blind is not.

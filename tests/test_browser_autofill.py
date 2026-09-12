@@ -128,3 +128,31 @@ def test_the_application_tab_is_chosen_over_whatever_is_last():
     # no ATS tab -> fall back to the most recently opened
     plain = [_FakeTab("https://a.com"), _FakeTab("https://b.com")]
     assert pick_application_tab(plain).url == "https://b.com"
+
+
+def test_a_dropdown_set_to_the_wrong_value_is_flagged_loudly():
+    """Workday defaults Country to "United States of America". A wrong
+    prefilled value gets submitted; an empty one does not."""
+    import asyncio
+
+    page, report = asyncio.run(
+        _run(
+            [_field("Country", kind="dropdown", value="United States of America")],
+            [_answer("Country", answer="Colombia")],
+        )
+    )
+    assert page.filled == []
+    why = report["skipped"][0][1]
+    assert "WRONG" in why and "Colombia" in why
+
+
+def test_a_dropdown_already_correct_is_not_flagged():
+    import asyncio
+
+    _, report = asyncio.run(
+        _run(
+            [_field("Country", kind="dropdown", value="Colombia")],
+            [_answer("Country", answer="Colombia")],
+        )
+    )
+    assert "WRONG" not in report["skipped"][0][1]

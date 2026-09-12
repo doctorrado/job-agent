@@ -116,8 +116,14 @@ async def read_fields(page) -> list[PageField]:
     script = """
         () => {
           const out = [];
+          // Workday renders most "dropdowns" as custom widgets, not <select>,
+          // so a plain input/select query misses them entirely — including
+          // Country, which defaults to United States of America. A wrong
+          // prefilled value is worse than an empty one: it gets submitted.
           const els = document.querySelectorAll(
-            'input:not([type=hidden]):not([type=submit]):not([type=button]), textarea, select'
+            'input:not([type=hidden]):not([type=submit]):not([type=button]), ' +
+            'textarea, select, [role=combobox], [role=listbox], ' +
+            'button[aria-haspopup]'
           );
           let i = 0;
           for (const el of els) {
@@ -136,12 +142,21 @@ async def read_fields(page) -> list[PageField]:
             const handle = 'jf' + (i++);
             el.setAttribute('data-jobagent', handle);
             const req = el.required || el.getAttribute('aria-required') === 'true';
+            const isWidget = el.tagName === 'BUTTON' ||
+                             el.getAttribute('role') === 'combobox' ||
+                             el.getAttribute('role') === 'listbox';
+            let kind = 'text';
+            if (el.tagName === 'SELECT') kind = 'select';
+            else if (isWidget) kind = 'dropdown';
+            else if (el.type) kind = el.type;
+            // A custom widget shows its choice as text, not as .value
+            const shown = el.value || (isWidget ? (el.innerText || '').trim() : '');
             out.push({
               label: label.trim().replace(/\\s+/g, ' '),
               selector: '[data-jobagent="' + handle + '"]',
-              kind: el.tagName === 'SELECT' ? 'select' : (el.type || 'text'),
+              kind: kind,
               required: !!req,
-              current_value: el.value || '',
+              current_value: shown.replace(/\\s+/g, ' ').slice(0, 80),
               automationId: autoId || '',
             });
           }
@@ -187,8 +202,25 @@ async def apply_answers(page, fields: list[dict], answers: list[FilledField]) ->
         # question, so reporting it as "not known" is noise rather than a
         # to-do. Say what it actually is.
         kind = field.get("kind", "")
-        if kind in ("select", "file", "checkbox", "radio"):
-            skipped.append((label, f"{kind} — choose this yourself"))
+        if kind in ("select", "file", "checkbox", "radio", "dropdown"):
+            shown = (field.get("current_value") or "").strip()
+            # The important case: a dropdown that is already set to something
+            # WRONG. Workday defaults Country to United States of America, and
+            # a wrong prefilled value gets submitted while an empty one does
+            # not. Say so loudly rather than listing it as a neutral skip.
+            if (
+                answer is not None
+                and answer.outcome is Outcome.ANSWERED
+                and shown
+                and answer.answer.lower() not in shown.lower()
+            ):
+                skipped.append(
+                    (label, f"WRONG: shows {shown!r}, should be {answer.answer!r} — fix this")
+                )
+            elif shown:
+                skipped.append((label, f"{kind}, currently {shown!r} — check it"))
+            else:
+                skipped.append((label, f"{kind} — choose this yourself"))
             continue
         if answer is None or answer.outcome is Outcome.UNKNOWN:
             skipped.append((label, "not known"))
