@@ -107,6 +107,40 @@ def pick_application_tab(pages: list):
     return pages[-1]
 
 
+async def describe_fields(page) -> list[dict]:
+    """Raw markup of every field, for when detection is guessing wrong.
+
+    Four rounds were spent inferring how Workday marks a combobox. This
+    prints what the element actually is instead.
+    """
+    script = """
+      () => Array.from(document.querySelectorAll(
+        'input:not([type=hidden]), textarea, select, [role], button'
+      )).filter(el => {
+        const r = el.getBoundingClientRect();
+        return r.width > 0 || r.height > 0;
+      }).map(el => ({
+        tag: el.tagName.toLowerCase(),
+        type: el.type || '',
+        role: el.getAttribute('role') || '',
+        label: (el.getAttribute('aria-label') || '').slice(0, 44),
+        haspopup: el.getAttribute('aria-haspopup') || '',
+        expanded: el.getAttribute('aria-expanded') || '',
+        autocomplete: el.getAttribute('aria-autocomplete') || '',
+        readonly: el.readOnly ? 'y' : '',
+        automation: (el.getAttribute('data-automation-id') || '').slice(0, 30),
+        value: (el.value || '').slice(0, 26),
+      }))
+    """
+    out: list[dict] = []
+    for frame in page.frames:
+        try:
+            out.extend(await frame.evaluate(script))
+        except Exception:  # noqa: BLE001
+            continue
+    return out
+
+
 async def read_fields(page) -> list[PageField]:
     """Every visible, fillable field on the current page, with its label.
 

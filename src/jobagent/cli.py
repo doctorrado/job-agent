@@ -25,6 +25,7 @@ from jobagent.browser.workday import (
     CDP_ENDPOINT,
     apply_answers,
     debug_port_is_open,
+    describe_fields,
     launch_debug_browser,
     pick_application_tab,
     read_fields,
@@ -1031,6 +1032,9 @@ def autofill_command(
     dry_run: bool = typer.Option(
         False, "--dry-run", help="Show what would be filled without typing anything"
     ),
+    debug: bool = typer.Option(
+        False, "--debug", help="Dump the raw markup of every field and stop"
+    ),
     choose: bool = typer.Option(
         False,
         "--choose",
@@ -1042,9 +1046,7 @@ def autofill_command(
     Start Chrome once with debugging enabled, log in and navigate to the form
     yourself, then run this:
 
-        google-chrome --remote-debugging-port=9222
-        # this machine has Chrome Canary:
-        /opt/google/chrome-canary/google-chrome-canary --remote-debugging-port=9222
+        jobagent browser
 
     It attaches to that browser — your session, your profile — reads the
     visible fields, and types only what it can answer. Dropdowns, uploads,
@@ -1095,6 +1097,24 @@ def autofill_command(
                     typer.echo(f"   {(candidate.url or '')[:88]}")
             page = pick_application_tab(pages)
             typer.echo(f"\nUsing: {page.url[:88]}\n")
+
+            if debug:
+                rows = await describe_fields(page)
+                typer.echo(
+                    f"{'label':30} {'tag':8} {'type':9} {'role':10} "
+                    f"{'popup':9} {'exp':6} {'auto':5} {'ro':3} value"
+                )
+                for row in rows:
+                    if not (row["label"] or row["automation"]):
+                        continue
+                    typer.echo(
+                        f"{row['label'][:30]:30} {row['tag']:8} {row['type'][:9]:9} "
+                        f"{row['role'][:10]:10} {row['haspopup'][:9]:9} "
+                        f"{row['expanded'][:6]:6} {row['autocomplete'][:5]:5} "
+                        f"{row['readonly']:3} {row['value'][:26]}"
+                    )
+                typer.echo(f"\n{len(rows)} elements. Nothing touched (--debug).")
+                return
 
             fields = await read_fields(page)
             if not fields:
