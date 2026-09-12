@@ -50,9 +50,15 @@ _CONTACT_FIELDS = (
     (re.compile(r"\b(github|portfolio|personal website)\b", re.I), "github"),
     (re.compile(r"\b(postal|zip)\s*code\b|c[oó]digo postal", re.I), "postal_code"),
     (re.compile(r"\b(city|ciudad)\b", re.I), "city"),
+    (re.compile(r"\b(state|province|region|departamento)\b", re.I), "region"),
     (re.compile(r"\b(country|pa[ií]s)\b", re.I), "country"),
-    (re.compile(r"\b(address|direcci[oó]n)\b", re.I), "full_address"),
-    (re.compile(r"\b(full name|nombre completo|your name)\b", re.I), "full_name"),
+    # Workday splits the address across fields, so "Address Line 1" must get
+    # the street alone — not the whole thing with city and country repeated.
+    (re.compile(r"\baddress\s*line\s*1?\b|\bstreet\b|\bdirecci[oó]n\b", re.I), "address_line"),
+    (re.compile(r"\b(address|domicilio)\b", re.I), "full_address"),
+    (re.compile(r"\b(first|given)\s*name\b|\bnombres?\b", re.I), "first_name"),
+    (re.compile(r"\b(last|family|sur)\s*name\b|\bapellidos?\b", re.I), "last_name"),
+    (re.compile(r"\b(full name|nombre completo|your name|legal name)\b", re.I), "full_name"),
 )
 
 
@@ -77,26 +83,14 @@ def _mentioned_skill(question: str, profile: Profile) -> str | None:
 def resolve(
     question: str, profile: Profile, contact: Contact | None = None
 ) -> ResolvedAnswer | None:
-    """Answer from the profile and contact details, or None if unknowable."""
-    if contact is not None:
-        # Residence BEFORE the address patterns: "what country do you
-        # currently reside in" contains "country", and answering that with
-        # the address field would state something untrue.
-        if _RESIDENCE.search(question):
-            if contact.currently_resides_in_colombia:
-                return ResolvedAnswer(
-                    answer=f"{contact.city}, {contact.country}", source="contact"
-                )
-            return ResolvedAnswer(
-                answer=contact.relocation_note or "Not currently resident; relocating.",
-                source="contact.relocation_note",
-                confident=False,
-            )
-        for pattern, field in _CONTACT_FIELDS:
-            if pattern.search(question):
-                value = getattr(contact, field)
-                if value:
-                    return ResolvedAnswer(answer=str(value), source=f"contact.{field}")
+    """Answer from the profile and contact details, or None if unknowable.
+
+    Order matters and is the whole design. Every SEMANTIC question is checked
+    before the generic contact-field keywords, because those keywords are
+    substrings of real questions: "do you require sponsorship to work in this
+    country" contains "country", and once answered "Colombia" — a nonsense
+    reply to an important question.
+    """
     if _YEARS_QUESTION.search(question):
         skill = _mentioned_skill(question, profile)
         if skill is None:
@@ -137,11 +131,21 @@ def resolve(
             source="profile.salary",
         )
 
+    if _RESIDENCE.search(question):
+        if contact is None:
+            return None
+        if contact.currently_resides_in_colombia:
+            return ResolvedAnswer(
+                answer=f"{contact.city}, {contact.country}", source="contact"
+            )
+        return ResolvedAnswer(
+            answer=contact.relocation_note or "Not currently resident; relocating.",
+            source="contact.relocation_note",
+            confident=False,
+        )
+
     if _RELOCATE.search(question):
         cities = ", ".join(profile.locations.preferred_cities) or "Colombia"
-        # Must not claim he is already based there. This branch said "Based in
-        # Colombia" regardless of the contact file, which was simply untrue
-        # while he is relocating.
         if contact is not None and not contact.currently_resides_in_colombia:
             return ResolvedAnswer(
                 answer=(
@@ -156,5 +160,12 @@ def resolve(
             source="profile.locations",
             confident=False,
         )
+
+    if contact is not None:
+        for pattern, field in _CONTACT_FIELDS:
+            if pattern.search(question):
+                value = getattr(contact, field)
+                if value:
+                    return ResolvedAnswer(answer=str(value), source=f"contact.{field}")
 
     return None

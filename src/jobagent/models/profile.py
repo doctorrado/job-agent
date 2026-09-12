@@ -89,6 +89,17 @@ class Contact(BaseModel):
     relocation_note: str = ""
 
     @property
+    def first_name(self) -> str:
+        return self.full_name.split()[0] if self.full_name else ""
+
+    @property
+    def last_name(self) -> str:
+        """Everything after the first name — Spanish naming commonly uses two
+        surnames, so this must not assume a single trailing word."""
+        parts = self.full_name.split()
+        return " ".join(parts[1:]) if len(parts) > 1 else ""
+
+    @property
     def full_address(self) -> str:
         parts = [self.address_line, self.postal_code, self.city, self.region, self.country]
         return ", ".join(p for p in parts if p)

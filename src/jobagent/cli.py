@@ -19,7 +19,8 @@ import typer
 import yaml
 
 from jobagent import __version__
-from jobagent.answers.resolve import resolve
+from jobagent.answers.form import Outcome, clean_label, fill_form
+from jobagent.answers.resolve import ResolvedAnswer, resolve
 from jobagent.config import get_settings, load_contact, load_profile
 from jobagent.discovery.ats_probe import Candidate, ProbeState, is_probeable, probe_company
 from jobagent.logging import configure_logging, get_logger
@@ -954,3 +955,59 @@ def answer_command(
     typer.echo(f"   (from {resolved.source})")
     if not resolved.confident:
         typer.echo("   ^ low confidence — check this before using it.")
+
+
+@app.command("fill")
+def fill_command(
+    fields: str = typer.Argument(..., help="Text file with one form label per line"),
+) -> None:
+    """Answer a whole application form from what is already known.
+
+    Paste the labels off the form — literally what is on screen, one per line
+    — and this returns an answer for each, the source it came from, and an
+    explicit list of what it cannot answer. Nothing is guessed: a field it
+    does not know is reported, not filled.
+    """
+    settings = get_settings()
+    profile = load_profile(settings.profile_path)
+    contact = load_contact()
+    session = make_session_factory(settings.db_path)()
+    answers = AnswerRepository(session)
+
+    path = Path(fields)
+    if not path.is_file():
+        typer.echo(f"No such file: {fields}")
+        raise typer.Exit(1)
+    labels = [line for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+    banked = {}
+    for raw in labels:
+        label = clean_label(raw)
+        hit = answers.lookup(label)
+        if hit is not None:
+            banked[label] = ResolvedAnswer(answer=hit.answer, source="answer bank")
+
+    filled = fill_form(labels, profile, contact, banked)
+    known = [f for f in filled if f.outcome is Outcome.ANSWERED]
+    unknown = [f for f in filled if f.outcome is Outcome.UNKNOWN]
+    refused = [f for f in filled if f.outcome is Outcome.REFUSED]
+
+    width = min(max((len(f.label) for f in filled), default=10), 44)
+    for field in filled:
+        if field.outcome is Outcome.ANSWERED:
+            flag = " ?" if not field.confident else "  "
+            typer.echo(f"{field.label[:width]:<{width}}{flag}  {field.answer[:60]}")
+            typer.echo(f"{'':<{width}}      ({field.source})")
+        elif field.outcome is Outcome.UNKNOWN:
+            typer.echo(f"{field.label[:width]:<{width}}      -- NOT KNOWN, answer this yourself")
+        else:
+            typer.echo(f"{field.label[:width]:<{width}}      -- REFUSED (sensitive)")
+
+    typer.echo(
+        f"\n{len(known)} answered, {len(unknown)} unknown, {len(refused)} refused "
+        f"(of {len(filled)} fields)."
+    )
+    if unknown:
+        typer.echo("\nBank the ones you answer, so the next form knows them:")
+        for field in unknown[:6]:
+            typer.echo(f'   jobagent remember -q "{field.label}" -a "<answer>"')

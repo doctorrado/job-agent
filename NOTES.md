@@ -1067,3 +1067,51 @@ applied to a different file.
 Andres confirmed on 2026-09-12 that he IS based in Bogota, so the flag is
 true and the answers say so plainly. The machinery for the other case is
 tested and stays, because the distinction is the point.
+
+## 2026-09-12 — `jobagent fill`: the Phase 7 brain, without the browser
+
+Phase 7 splits cleanly and only half of it needs a browser. The intelligence
+is knowing WHAT to type; clicking the field is mechanical. So the brain is
+built and tested first, and it is useful immediately — Andres fills these
+forms by hand anyway.
+
+`jobagent fill <labels.txt>` takes the labels off a form, one per line, and
+returns three outcomes per field:
+
+    ANSWERED   with the source it came from
+    UNKNOWN    reported, never guessed, with the `remember` command to bank it
+    REFUSED    demographic/sensitive, never answered automatically
+
+On a realistic 21-field Workday form: **16 answered, 2 unknown, 3 refused.**
+
+### Three bugs the first real test exposed
+
+1. **"Do you require sponsorship to work in this country?" answered
+   "Colombia".** The generic contact-field keyword `country` matched before
+   the sponsorship check ran. Fixed by ordering: every SEMANTIC question
+   (years, sponsorship, salary, residence, relocation) is now checked before
+   any contact-field keyword, because those keywords are substrings of real
+   questions. This is the same class of error as the residence-vs-address one
+   — keyword matching cannot be allowed to outrank meaning.
+2. **"Address Line 1" returned the entire address**, city and country
+   included. Workday splits an address across fields, so line 1 gets the
+   street alone.
+3. **First/Last Name were unknown.** `Contact` now derives them, with
+   `last_name` taking everything after the first word — Spanish naming
+   commonly uses two surnames and assuming one trailing word would drop one.
+
+### Workday access, established
+
+There are no Workday URLs in the bank at all: every source is either an ATS
+API or a LinkedIn link. Claude can SEARCH for Workday postings (public search
+results) but must not fetch the page or its `/wday/cxs/` endpoint — that is
+the automated access already ruled out. So the workflow is: search, hand over
+links, Andres opens them.
+
+Real Colombia Workday postings found this way, including **IQVIA's Data
+Analyst/Business Intelligence in Bogota — a job he had already marked
+worth_applying from two other sources**. That is the ideal spike: a real form,
+for a job he actually wants.
+
+Tenant prefixes vary (wd1, wd5, wd103) but it is one product, which is why
+the field structure should generalise across employers.
