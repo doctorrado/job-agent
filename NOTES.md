@@ -718,14 +718,11 @@ Submit himself.
    attributes in its DOM, so it is more automatable than a bespoke careers
    page, not less. Blocked on: a real mapped form (a spike, not a build) and
    an answer bank worth drawing on. Never auto-submit; pause at CAPTCHA/MFA.
-2. **Answer bank, static tier.** Name, Bogota address, phone, email, login
-   password (via .env, never chat), education, employers, titles, dates,
-   resume bullets. ~80% of any application and buildable today from
-   profile.yaml + candidate_profile.md — no forms needed.
-3. **Years-per-skill in profile.yaml.** Currently 65 skills as a flat list
-   with no years attached. "How many years of X" is the single most common
-   variable question on a form; a years+confidence column answers most of
-   them automatically instead of asking him each time.
+2. ~~**Answer bank, static tier.**~~ **DONE 2026-09-12** — private/contact.yaml
+   plus the resolver. Still missing: the login password (goes in .env), and
+   resume bullets as pasteable text.
+3. ~~**Years-per-skill in profile.yaml.**~~ **DONE 2026-09-12** — 62 of 63
+   skills carry years, answered in English and Spanish.
 4. **Dashboard (deferred by Andres 2026-09-10, wants it eventually).** A
    published Artifact: applications and their statuses, the ranked shortlist,
    the answer bank. The tracker is FOR him — `jobagent applications` printing
@@ -733,8 +730,9 @@ Submit himself.
    does not need it; it can read the DB.
 5. **`jobagent today`.** One command that says what to do now, instead of him
    remembering a five-step sequence.
-6. **Run the probe over the remaining ~390 companies**, and re-run it after
-   each fetch as new companies appear in the alerts.
+6. ~~**Run the probe over the remaining companies.**~~ **DONE 2026-09-12** —
+   all 496 probed, 64 boards found, companies.yaml 41 -> 105. STILL TO DO:
+   re-run it periodically, as each fetch brings new companies into the bank.
 7. **Bullet reordering** (same safe "same words, different order" property as
    the skills line). Bullet *rewording* stays with the LLM pass, gated on his
    approval per bullet.
@@ -757,6 +755,12 @@ Submit himself.
    his call, not because the evidence is thin. If built: exclude on
    `has_senior_title(job) or years_required > max_years_experience`, and give
    `rank` a way to show what was gated, the way `--all` reveals not_a_fit.
+
+9. **`jobagent audit-resumes`.** Flag any term on a master resume that is not
+   in profile.yaml. Airflow and GCP sat on the D_Eng resume claiming
+   experience Andres does not have, and were caught only because he happened
+   to mention it in conversation. The resumes are the one place a skill list
+   lives that nothing validates.
 
 Deliberately NOT on this list: scraping LinkedIn/Indeed/Glassdoor, and
 Workday's undocumented `/wday/cxs/` endpoint for FETCHING. Applying through
