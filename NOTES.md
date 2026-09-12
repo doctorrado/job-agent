@@ -1803,3 +1803,47 @@ Two smaller things fell out of it:
 
 Verified: `['Colombia (+57)']` -> `['United States of America (+1)']`, one
 chip in, one chip out.
+
+## MILESTONE — page 1 of a real Workday application, unattended (2026-09-12)
+
+One command on a freshly loaded IQVIA form, ten fields:
+
+    Country*              Colombia            (a dropdown, typed and committed)
+    Given Name(s)*        Andres
+    Father's Family Name* Torrado
+    Mother's Family Name  Gil
+    Address Line 1        Cl. 25B #No 69 C-80
+    City                  Bogota
+    Postal Code           110931
+    Phone Device Type*    Mobile              (dropdown)
+    Country Phone Code*   United States of America (+1)   (multi-select chip)
+    Phone Number*         786 868 9972
+
+Including the two hard parts: the form REWRITES itself when Country becomes
+Colombia (relabelling the name fields, dropping State, resetting the phone
+code), and the multi-pass loop picks up what that creates and re-fixes what it
+undoes.
+
+### What is left on this page, and why
+
+    Yes / No radio        we HAVE the banked answer ("No") — see below
+    preferred-name box    unticked is correct; leaving it is right
+    Phone Extension       genuinely blank
+    Address Line 2        genuinely blank
+
+**Radio groups are the one real gap.** "Have you ever been a regular employee
+of IQVIA..." is answered in the bank as "No", but radios are skipped wholesale
+because a radio's LABEL is its option ("Yes"/"No"), not the question. Matching
+them needs the group's question — the fieldset legend or aria-labelledby —
+rather than the input's own label. That is the next thing worth building for
+this page.
+
+### The count for this widget
+
+Roughly a dozen rounds on Country Phone Code alone. Every single one had the
+same signature: the code reported success while the field was wrong. The
+value lived in four different places depending on the widget (`.value` as an
+opaque id, `innerText`, a sibling node, the aria-label, and finally chips),
+and each fix read one more wrong place. Nothing was learned about Workday
+that mattered; what mattered was deciding where the value lives and refusing
+to read anywhere else.
