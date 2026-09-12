@@ -11,7 +11,7 @@ from pathlib import Path
 import yaml
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from jobagent.models.profile import Contact, Profile
+from jobagent.models.profile import Contact, History, Profile
 
 
 class Settings(BaseSettings):
@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     resumes_dir: Path = Path("private/resumes")
     postings_dir: Path = Path("private/postings")
     contact_path: Path = Path("private/contact.yaml")
+    history_path: Path = Path("private/history.yaml")
 
     anthropic_api_key: str | None = None
     adzuna_app_id: str | None = None
@@ -62,3 +63,11 @@ def load_contact(path: Path | None = None) -> Contact | None:
     if not target.is_file():
         return None
     return Contact(**yaml.safe_load(target.read_text(encoding="utf-8")))
+
+
+def load_history(path: Path | None = None) -> History | None:
+    """Work history and education, or None if the file does not exist."""
+    target = path or get_settings().history_path
+    if not target.is_file():
+        return None
+    return History(**yaml.safe_load(target.read_text(encoding="utf-8")))

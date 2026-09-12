@@ -21,7 +21,7 @@ import yaml
 from jobagent import __version__
 from jobagent.answers.form import Outcome, clean_label, fill_form
 from jobagent.answers.resolve import ResolvedAnswer, resolve
-from jobagent.config import get_settings, load_contact, load_profile
+from jobagent.config import get_settings, load_contact, load_history, load_profile
 from jobagent.discovery.ats_probe import Candidate, ProbeState, is_probeable, probe_company
 from jobagent.logging import configure_logging, get_logger
 from jobagent.pipeline.dedupe import normalize_company, normalize_text, posting_identity
@@ -945,7 +945,7 @@ def answer_command(
         typer.echo(f"   (from the answer bank, asked {banked.times_used}x)")
         return
 
-    resolved = resolve(question, profile, load_contact())
+    resolved = resolve(question, profile, load_contact(), load_history())
     if resolved is None:
         typer.echo("Not known. Answer it yourself, then bank it:")
         typer.echo(f'   jobagent remember -q "{question}" -a "<your answer>"')
@@ -987,7 +987,7 @@ def fill_command(
         if hit is not None:
             banked[label] = ResolvedAnswer(answer=hit.answer, source="answer bank")
 
-    filled = fill_form(labels, profile, contact, banked)
+    filled = fill_form(labels, profile, contact, banked, load_history())
     known = [f for f in filled if f.outcome is Outcome.ANSWERED]
     unknown = [f for f in filled if f.outcome is Outcome.UNKNOWN]
     refused = [f for f in filled if f.outcome is Outcome.REFUSED]
@@ -999,9 +999,13 @@ def fill_command(
             typer.echo(f"{field.label[:width]:<{width}}{flag}  {field.answer[:60]}")
             typer.echo(f"{'':<{width}}      ({field.source})")
         elif field.outcome is Outcome.UNKNOWN:
-            typer.echo(f"{field.label[:width]:<{width}}      -- NOT KNOWN, answer this yourself")
+            mark = "*" if field.required else " "
+            typer.echo(
+                f"{field.label[:width]:<{width}}    {mark} -- NOT KNOWN, answer this yourself"
+            )
         else:
-            typer.echo(f"{field.label[:width]:<{width}}      -- REFUSED (sensitive)")
+            note = " -- REQUIRED, so you must answer it yourself" if field.required else ""
+            typer.echo(f"{field.label[:width]:<{width}}      -- REFUSED (sensitive){note}")
 
     typer.echo(
         f"\n{len(known)} answered, {len(unknown)} unknown, {len(refused)} refused "

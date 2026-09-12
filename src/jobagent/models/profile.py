@@ -103,3 +103,47 @@ class Contact(BaseModel):
     def full_address(self) -> str:
         parts = [self.address_line, self.postal_code, self.city, self.region, self.country]
         return ", ".join(p for p in parts if p)
+
+
+class Employment(BaseModel):
+    job_title: str = ""
+    company: str = ""
+    via: str = ""
+    location: str = ""
+    start: str = ""
+    end: str = ""
+    current: bool = False
+    description: str = ""
+
+
+class Education(BaseModel):
+    school: str = ""
+    degree: str = ""
+    field_of_study: str = ""
+    emphasis: str = ""
+    minor: str = ""
+    location: str = ""
+    start: str = ""
+    end: str = ""
+    gpa: str = ""
+
+
+class Certification(BaseModel):
+    name: str = ""
+    issuer: str = ""
+    date: str = ""
+    note: str = ""
+
+
+class History(BaseModel):
+    """Work history and education, structured for application forms.
+
+    Every Workday form asks for these and they existed only as prose, so 7
+    required fields on a real IQVIA application came back "not known".
+    Job titles are deliberately allowed to be blank: candidate_profile.md
+    never recorded them, and inventing one is the fabrication rule broken.
+    """
+
+    employment: list[Employment] = Field(default_factory=list)
+    education: list[Education] = Field(default_factory=list)
+    certifications: list[Certification] = Field(default_factory=list)

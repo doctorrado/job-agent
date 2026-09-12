@@ -19,7 +19,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from jobagent.models.profile import Contact, Profile
+from jobagent.models.profile import Contact, History, Profile
 
 _YEARS_QUESTION = re.compile(
     r"(how many years|years of|years'? experience|a[nñ]os de experiencia|"
@@ -28,8 +28,23 @@ _YEARS_QUESTION = re.compile(
 )
 _SPONSORSHIP = re.compile(
     r"(sponsor\w*|visa|work permit|right to work|authorized to work|"
-    r"work authorization|requiere patrocinio)",
+    r"work authorization|requiere patrocinio|patrocinio|"
+    # verbatim from IQVIA's Workday form, which asks it only in Spanish
+    r"posibilidad para ser empleado|permiso para trabajar|"
+    r"autorizaci[oó]n para trabajar)",
     re.I,
+)
+_SKILLS_FIELD = re.compile(r"(type to add skills|list your skills|^skills?$|habilidades)", re.I)
+_LEGAL_AGE = re.compile(r"(edad legal m[ií]nima|legal(ly)? (minimum )?age|of legal age)", re.I)
+_HISTORY_FIELDS = (
+    (re.compile(r"\b(job title|puesto|cargo)\b", re.I), "employment", "job_title"),
+    (re.compile(r"\b(company|employer|empresa)\b", re.I), "employment", "company"),
+    (re.compile(r"\brole description|responsibilities\b", re.I), "employment", "description"),
+    (re.compile(r"\bschool or university\b|\buniversity\b|\bschool\b|universidad", re.I),
+     "education", "school"),
+    (re.compile(r"\bfield of study\b|[aá]rea de estudio", re.I), "education", "field_of_study"),
+    (re.compile(r"\bdegree\b|t[ií]tulo", re.I), "education", "degree"),
+    (re.compile(r"\bgpa\b|promedio", re.I), "education", "gpa"),
 )
 _SALARY = re.compile(
     r"(salary expectation|expected salary|desired salary|compensation "
@@ -81,7 +96,10 @@ def _mentioned_skill(question: str, profile: Profile) -> str | None:
 
 
 def resolve(
-    question: str, profile: Profile, contact: Contact | None = None
+    question: str,
+    profile: Profile,
+    contact: Contact | None = None,
+    history: History | None = None,
 ) -> ResolvedAnswer | None:
     """Answer from the profile and contact details, or None if unknowable.
 
@@ -107,6 +125,22 @@ def resolve(
         return ResolvedAnswer(
             answer=f"{years:g}", source=f"profile.skill_years[{skill.lower()}]"
         )
+
+    if _SKILLS_FIELD.search(question.strip()):
+        if not profile.skills:
+            return None
+        return ResolvedAnswer(
+            answer=", ".join(profile.skills),
+            source=f"profile.skills ({len(profile.skills)})",
+            # Workday's own guidance says to list only RELEVANT skills, so
+            # dumping all 63 is a starting point to trim, not an answer.
+            confident=False,
+        )
+
+    if _LEGAL_AGE.search(question):
+        # Born 2002; of legal working age everywhere. Trivially true, and the
+        # form makes it required.
+        return ResolvedAnswer(answer="Yes / Sí", source="date of birth")
 
     if _SPONSORSHIP.search(question):
         authorized = profile.work_authorization.us_authorized
@@ -160,6 +194,23 @@ def resolve(
             source="profile.locations",
             confident=False,
         )
+
+    if history is not None:
+        for pattern, section, field in _HISTORY_FIELDS:
+            if not pattern.search(question):
+                continue
+            entries = getattr(history, section)
+            if not entries:
+                continue
+            value = getattr(entries[0], field)
+            if value:
+                return ResolvedAnswer(
+                    answer=str(value).strip(),
+                    source=f"history.{section}[0].{field}",
+                    # Forms repeat these sections; entry 1 is only the first
+                    # of several, so the answer is a starting point.
+                    confident=len(entries) == 1,
+                )
 
     if contact is not None:
         for pattern, field in _CONTACT_FIELDS:

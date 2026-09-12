@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from jobagent.answers.resolve import ResolvedAnswer, resolve
-from jobagent.models.profile import Contact, Profile
+from jobagent.models.profile import Contact, History, Profile
 
 # Form labels carry noise a banked question does not: a trailing colon, a
 # required-field asterisk, "(optional)", stray numbering.
@@ -38,6 +38,7 @@ class FilledField:
     answer: str = ""
     source: str = ""
     confident: bool = True
+    required: bool = False
 
 
 def clean_label(label: str) -> str:
@@ -45,11 +46,22 @@ def clean_label(label: str) -> str:
     return _LABEL_NOISE.sub("", label).strip()
 
 
+def is_required(raw_label: str) -> bool:
+    """Workday marks required fields with a trailing asterisk.
+
+    Worth keeping, because REFUSED and REQUIRED together is the important
+    case: IQVIA makes Date of Birth mandatory, so the form simply cannot be
+    completed without Andres answering it himself. Silently refusing it would
+    leave him stuck at a step with no explanation."""
+    return raw_label.rstrip().endswith("*")
+
+
 def fill_form(
     labels: list[str],
     profile: Profile,
     contact: Contact | None = None,
     banked: dict[str, ResolvedAnswer] | None = None,
+    history: History | None = None,
 ) -> list[FilledField]:
     """One answer per label, in the order the form asks them."""
     from jobagent.storage.repository import is_sensitive
@@ -60,12 +72,17 @@ def fill_form(
         label = clean_label(raw)
         if not label:
             continue
+        required = is_required(raw)
         if is_sensitive(label):
-            filled.append(FilledField(label=label, outcome=Outcome.REFUSED))
+            filled.append(
+                FilledField(label=label, outcome=Outcome.REFUSED, required=required)
+            )
             continue
-        found = banked.get(label) or resolve(label, profile, contact)
+        found = banked.get(label) or resolve(label, profile, contact, history)
         if found is None:
-            filled.append(FilledField(label=label, outcome=Outcome.UNKNOWN))
+            filled.append(
+                FilledField(label=label, outcome=Outcome.UNKNOWN, required=required)
+            )
             continue
         filled.append(
             FilledField(
@@ -74,6 +91,7 @@ def fill_form(
                 answer=found.answer,
                 source=found.source,
                 confident=found.confident,
+                required=required,
             )
         )
     return filled

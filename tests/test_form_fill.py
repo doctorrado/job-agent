@@ -92,3 +92,28 @@ def test_the_three_outcomes_are_distinguished():
 
 def test_blank_lines_are_ignored():
     assert len(fill_form(["City", "", "   "], _profile(), _contact())) == 1
+
+
+def test_a_refused_field_that_is_required_says_so():
+    """IQVIA makes Date of Birth mandatory. Refusing it silently would leave
+    Andres stuck at a step with no explanation of why."""
+    from jobagent.answers.form import is_required
+
+    assert is_required("Date of Birth*")
+    assert not is_required("Phone Extension")
+
+    filled = fill_form(["Date of Birth*", "Gender"], _profile(), _contact())
+    assert filled[0].outcome is Outcome.REFUSED and filled[0].required is True
+    assert filled[1].outcome is Outcome.REFUSED and filled[1].required is False
+
+
+def test_spanish_work_authorisation_phrasing_is_recognised():
+    """Verbatim from IQVIA's Workday form, which asks it only in Spanish."""
+    filled = fill_form(
+        ["Por favor seleccione la opción que mejor describa su actual "
+         "posibilidad para ser empleado en Colombia.*"],
+        _profile(),
+        _contact(),
+    )
+    assert filled[0].outcome is Outcome.ANSWERED
+    assert "sponsorship" in filled[0].answer.lower()

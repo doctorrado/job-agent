@@ -1115,3 +1115,74 @@ for a job he actually wants.
 
 Tenant prefixes vary (wd1, wd5, wd103) but it is one product, which is why
 the field structure should generalise across employers.
+
+## 2026-09-12 — the real Workday form, and what it broke
+
+Andres filled out IQVIA's Workday application end to end (without submitting)
+and shared all 12 pages. First contact with a real form, and worth far more
+than the synthetic one:
+
+    synthetic 21-field form: 16 answered (76%)
+    REAL 36-field form:      13 answered (36%)
+
+### What the real form asks, in order
+
+Account creation (email, password, verify, consent) -> My Information (how
+did you hear about us, prior-employee question, country, legal name, address
+across 5 fields, phone across 4) -> My Experience (repeating Work Experience
+blocks; Education; Certifications; free-text Skills; resume upload) ->
+Application Questions (company-specific, some Spanish-only) -> Voluntary
+Disclosures (date of birth, T&Cs) -> Review.
+
+Account creation comes FIRST, before any job-specific field.
+
+### Biggest gap: work history and education existed nowhere structured
+
+They were prose in candidate_profile.md, so Job Title, Company, From, To,
+Location, Role Description, School, Degree and Field of Study all came back
+"not known" — 9 required fields. `private/history.yaml` now holds them
+(4 employers, education, certifications), with `Employment`/`Education`/
+`Certification`/`History` models.
+
+**Job titles are deliberately left blank.** candidate_profile.md never
+recorded them, and inventing one is exactly the fabrication rule. Andres
+fills them.
+
+### Errors in what he actually typed — the case for this whole feature
+
+His own submission had: Degree "Bachelor of Engineering" (it is a **B.S. in
+Computer Science**), "UNVIERSITY OF MISSISSIPPI", Job Title "Process
+ENGINWERGFW", Company "MTM" rather than Mazda Toyota Manufacturing, Field of
+Study blank, and one skill listed out of 63. The degree error is the serious
+one — IQVIA's own terms say misrepresentation means denial of candidacy or
+discharge. Typing the same facts into 300 forms by hand is exactly where
+this kind of error comes from.
+
+### Other fixes the real form forced
+
+- **Spanish-only work-authorisation question.** IQVIA asks "Por favor
+  seleccione la opción que mejor describa su actual posibilidad para ser
+  empleado en Colombia" and never asks it in English. Added verbatim.
+- **Legal-age question** ("¿Tiene Ud la edad legal mínima para trabajar...").
+- **Skills field** now answered from profile.skills, at low confidence:
+  Workday's own guidance says list only RELEVANT skills, so 63 is a list to
+  trim rather than an answer.
+- **REQUIRED + REFUSED is now surfaced.** Date of Birth is sensitive AND
+  mandatory, so the form cannot be completed without him. Refusing it
+  silently would leave him stuck at a step with no explanation.
+
+Result: 13 -> 21 of 36. The remainder are genuinely per-company (prior
+employee at IQVIA? UK licensed medic?) and belong in the answer bank as he
+answers them, or are the password (belongs in .env) and the resume upload.
+
+### Decision: option C for Workday discovery
+
+Andres chose the Jooble pattern — a deliberate, per-company, human-triggered
+`workday-search`, rather than crawling. Not yet built.
+
+Also established: tenant probing cannot work. A nonexistent tenant
+(`nonsensetenantxyz.wd1.myworkdayjobs.com`) returns 406 exactly like a real
+one, and the page shell carries no tenant/site metadata. And a Workday job
+URL returns **200 even when the posting is gone** — it is a SPA, so the shell
+loads and then renders "does not exist". Every link from a web search in this
+session was dead that way. Status codes prove nothing here.
