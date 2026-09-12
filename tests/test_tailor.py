@@ -112,3 +112,35 @@ def test_coverage_reports_once_the_posting_names_enough():
     )
     assert gaps.asked >= 4
     assert gaps.coverage == 100.0
+
+
+def test_remove_skills_deletes_only_the_named_terms(tmp_path):
+    """Removing an untrue claim is the one resume edit this project makes
+    eagerly — Airflow and GCP were printed on the D_Eng resume until Andres
+    said he had used neither."""
+    from jobagent.resumes.tailor import remove_skills
+
+    source = tmp_path / "in.docx"
+    _make_docx(source)
+    destination = tmp_path / "out.docx"
+
+    before = "\n".join(docx_lines(source))
+    removed = remove_skills(source, destination, {"etl"})
+    after = "\n".join(docx_lines(destination))
+
+    assert removed == ["ETL"]
+    assert "ETL" not in after
+    # every other term survives, and so do the category separators
+    assert after.count("|") == before.count("|")
+    for term in ("Star Schema", "Python", "SQL"):
+        assert term in after
+
+
+def test_remove_skills_leaves_a_resume_alone_when_nothing_matches(tmp_path):
+    from jobagent.resumes.tailor import remove_skills
+
+    source = tmp_path / "in.docx"
+    _make_docx(source)
+    destination = tmp_path / "out.docx"
+    assert remove_skills(source, destination, {"kubernetes"}) == []
+    assert docx_lines(source) == docx_lines(destination)

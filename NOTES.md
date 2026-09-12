@@ -1031,3 +1031,16 @@ matched skills, just without those two.
 
 This is the "never fabricate" rule working in the direction that matters —
 the source documents were wrong and the person is the authority, not the file.
+
+### `remove_skills` — the one resume edit made eagerly (2026-09-12)
+
+Every other resume change this project makes only reorders terms that are
+already there; `remove_skills` deletes named ones. That asymmetry is
+deliberate: adding or reordering can mislead, but removing an untrue claim
+can only make a resume more honest.
+
+Used to strip Airflow and GCP from the D_Eng master resume at Andres's
+request. Verified: 34 lines before, 34 after, exactly one changed; category
+separators intact; still one page. A backup sits at
+`private/resumes/.backup_D_Eng_before_removal.docx`. The other three resumes
+never mentioned either.
