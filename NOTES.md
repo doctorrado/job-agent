@@ -1718,3 +1718,27 @@ Two more things the mock settled:
 
 Verified against a mock built from the screenshot: chips before
 ['Colombia (+57)'], chips after ['United States of America (+1)'].
+
+### Leftover filter text, and reading the value in one place (2026-09-12)
+
+Two more, both consequences of earlier failed runs rather than of the form:
+
+1. **"already filled in" read the filter box.** Text left there by a previous
+   attempt made Country Phone Code look complete while its chip still said
+   Colombia (+57). Both the dropdown path and the text path were separately
+   deciding this from the wrong source, so the chip lookup now happens ONCE
+   per field, before any branch, and chips beat the input everywhere.
+
+2. **The filter box was never emptied before typing.** With "United States of
+   America" already in it, typing appended — "United States of AmericaUnited
+   States of America" — which matches nothing, so the chip was removed and
+   nothing took its place ("selection is now nothing"). It is cleared with an
+   input event first.
+
+Verified from the exact state Andres's form was stuck in: filter box holding
+stale text AND a wrong chip. Ends with the right chip and an empty filter.
+
+Five rounds on this one widget. Every round the code reported success while
+the chip was wrong, and each fix moved the false success rather than removing
+it. The single change that ended it was deciding, once, WHERE the value lives
+for this widget — the chips — and refusing to read anywhere else.

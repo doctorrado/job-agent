@@ -403,6 +403,22 @@ async def choose_option(page, selector: str, wanted: str) -> tuple[bool, str]:
         return False, "the dropdown did not open — not typing, not pressing Enter"
 
     try:
+        # Empty the filter box first. It keeps whatever an earlier run typed,
+        # so typing again appended — "United States of AmericaUnited States
+        # of America" — which filters to nothing and selects nothing.
+        await page.evaluate(
+            """
+            (sel) => {
+              const el = document.querySelector(sel);
+              if (el && 'value' in el && el.value) {
+                el.value = '';
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+              }
+            }
+            """,
+            selector,
+        )
+        await page.wait_for_timeout(200)
         await page.keyboard.type(wanted, delay=60)
         await page.wait_for_timeout(900)
         # Enter, check, Enter again. Workday's multi-select comboboxes (the
@@ -463,6 +479,15 @@ async def apply_answers(
         if _looks_like_password(label, field.get("kind", "")):
             skipped.append((label, "password field — never auto-filled"))
             continue
+        # Look the chips up ONCE, before any branch. Both the dropdown path
+        # and the text path were separately reading the filter box and
+        # concluding the field was already correct, while the chip beneath it
+        # said Colombia (+57).
+        try:
+            chips_here = await selected_chips(page, field.get("selector") or "")
+        except Exception:  # noqa: BLE001
+            chips_here = []
+
         # Kind first: a radio's label is its OPTION ("Yes"/"No"), never a
         # question, so reporting it as "not known" is noise rather than a
         # to-do. Say what it actually is.
@@ -476,9 +501,11 @@ async def apply_answers(
             # element's own .value is an opaque id and the display text can
             # live in a sibling node. Missing this re-selected fields that
             # were already correct.
-            shown_now = " ".join(
-                [(field.get("current_value") or ""), label]
-            ).strip()
+            shown_now = (
+                ", ".join(chips_here)
+                if chips_here
+                else " ".join([(field.get("current_value") or ""), label]).strip()
+            )
             if selector and strip_accents(answer.answer).casefold() \
                     not in strip_accents(shown_now).casefold():
                 if kind == "select":
@@ -522,6 +549,35 @@ async def apply_answers(
         if answer.outcome is Outcome.REFUSED:
             skipped.append((label, "sensitive — answer this yourself"))
             continue
+        # "Already filled" must ask what the field's VALUE is, and for a chip
+        # widget that is the chips, never the filter box. Text left in the
+        # filter box by an earlier run made Country Phone Code look complete
+        # while its chip still said Colombia (+57).
+        if chips_here:
+            if any(
+                strip_accents(answer.answer).casefold() in strip_accents(c).casefold()
+                for c in chips_here
+            ):
+                skipped.append((label, f"already set to {', '.join(chips_here)}"))
+                continue
+            # Wrong chip: fall through and let --choose replace it.
+            if not choose:
+                skipped.append(
+                    (
+                        label,
+                        f"WRONG: chip says {', '.join(chips_here)}, "
+                        f"should be {answer.answer!r} — rerun with --choose",
+                    )
+                )
+                continue
+            ok, detail = await choose_option(
+                page, field.get("selector") or "", answer.answer
+            )
+            if ok:
+                filled.append((label, detail))
+            else:
+                skipped.append((label, f"could not replace the chip: {detail}"))
+            continue
         if field.get("current_value"):
             skipped.append((label, "already filled in"))
             continue
@@ -548,10 +604,7 @@ async def apply_answers(
         )
         # If the field has chips, THEY are the value — the input only holds
         # what was typed to filter, so a match there is a false success.
-        try:
-            chips = await selected_chips(page, selector)
-        except Exception:  # noqa: BLE001
-            chips = []
+        chips = chips_here
         wanted_norm = strip_accents(answer.answer).casefold()
         if chips:
             if any(wanted_norm in strip_accents(c).casefold() for c in chips):
