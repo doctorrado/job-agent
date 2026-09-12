@@ -106,6 +106,50 @@ def matched_skills(job: Job, profile: Profile) -> list[str]:
     ]
 
 
+# Languages Andres does not have. Found only in JD bodies: Skydropx's RevOps
+# Data Analyst scored 80 and was a flat no because it wants "Portugues C1 o
+# superior". Note the accents — a first attempt used [eê] and silently never
+# matched "Portugues" at all.
+_MISSING_LANGUAGE = re.compile(
+    r"\b(portugu[eéê]s|portuguese|franc[eéê]s|french|fran[cç]ais|"
+    r"alem[aá]n|german|deutsch|mandarin|chino|italiano|italian)\b",
+    re.I,
+)
+# A requirement marker anywhere in the surrounding window, in either order:
+# real postings write both "Portugues C1" and "Indispensable: Portugues".
+_LANGUAGE_REQUIRED = re.compile(
+    r"\b(c1|c2|nativ\w*|fluen\w*|avanzado|advanced|required|obligatorio|"
+    r"indispensable|imprescindible|dominio|proficien\w*|must)\b",
+    re.I,
+)
+# ...unless the same window says it is optional, which outranks the marker.
+_LANGUAGE_OPTIONAL = re.compile(
+    r"\b(is a plus|es un plus|deseable|nice to have|preferred|opcional|"
+    r"valorable|ventaja|bonus)\b",
+    re.I,
+)
+_LANGUAGE_WINDOW = 90
+
+
+def requires_missing_language(job: Job) -> str | None:
+    """The language a posting demands that Andres does not speak, if any.
+
+    He has Spanish and English. A third language at C1/native level is a hard
+    gate no amount of skill overlap compensates for. "Deseable: Portugues
+    avanzado" is NOT one, so an optional marker in the window wins.
+    """
+    text = own_requirements(job)
+    for match in _MISSING_LANGUAGE.finditer(text):
+        window = text[
+            max(0, match.start() - _LANGUAGE_WINDOW) : match.end() + _LANGUAGE_WINDOW
+        ]
+        if _LANGUAGE_OPTIONAL.search(window):
+            continue
+        if _LANGUAGE_REQUIRED.search(window):
+            return match.group(1).lower()
+    return None
+
+
 def requires_internship(job: Job) -> bool:
     """True when the title marks this as a student placement."""
     return _INTERNSHIP_WORDS.search(job.title) is not None
@@ -139,6 +183,17 @@ def detect_seniority(job: Job) -> Seniority:
         if _JUNIOR_WORDS.search(haystack):
             return Seniority.junior
     return Seniority.unknown
+
+
+def has_senior_title(job: Job) -> bool:
+    """Senior/Staff/Lead/Principal in the TITLE, not merely in the prose.
+
+    detect_seniority falls back to the description, where "you will work with
+    senior stakeholders" is not evidence of a senior role. The one job Andres
+    marked worth_applying that the senior damper would have buried was N-iX's
+    "Data Engineer (Snowflake)" — flagged senior purely by description text.
+    """
+    return _SENIOR_WORDS.search(job.title) is not None
 
 
 def requires_us_work_authorization(job: Job) -> bool:

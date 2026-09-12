@@ -77,3 +77,25 @@ def test_confirmation_chrome_does_not_shift_the_fields():
     assert blocks[0]["title"] == "Business Intelligence Analyst"
     assert blocks[0]["company"] == "Kala"
     assert blocks[0]["location"].startswith("Bogota")
+
+
+FOOTER_BLOCK = """New jobs from your other alerts
+See all jobs on LinkedIn:  https://www.linkedin.com/comm/jobs/view/9999/
+<strong class="font-bold" style="font-weight: 600;">Data Engineer</strong>
+Acme
+Bogota, Colombia
+View job: https://www.linkedin.com/comm/jobs/view/4461788161/
+--------------------------------------------------
+"""
+
+
+def test_digest_footer_is_not_a_job_and_html_is_stripped():
+    """Two stored rows had "New jobs from your other alerts" as the employer
+    and raw <strong class=...> markup in the location."""
+    from jobagent.sources.linkedin_alert_source import _parse_blocks
+
+    blocks = _parse_blocks(FOOTER_BLOCK)
+    assert len(blocks) == 1
+    assert blocks[0]["title"] == "Data Engineer"
+    assert blocks[0]["company"] == "Acme"
+    assert "<" not in blocks[0]["location"]

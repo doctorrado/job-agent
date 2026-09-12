@@ -801,3 +801,82 @@ and through Greenhouse as a 10,262-character JD scoring 95.
 Two hard gates worth remembering, both found only in JD bodies: Skydropx
 RevOps Data Analyst requires "Portugues C1 o superior", and N-iX DataOps wants
 3+ years of Terraform, dbt and Snowflake.
+
+## 2026-09-12 — the scorer validated against 440 real verdicts
+
+The review session flagged that scores looked capped and that
+description-rich mismatches outranked description-less good matches. Both
+observations were right; the diagnosis was not, and checking properly turned
+up something worse.
+
+### The measurement that mattered
+
+With 440 verdicts on disk there is finally ground truth to test against.
+Baseline:
+
+```
+worth_applying  n=173  median 65.0
+unsure          n=162  median 63.0
+not_a_fit       n=105  median 57.0
+separation gap +8.0 | not_a_fit above the WA median: 16/105 | top-100 precision 53%
+```
+
+An 8-point gap. The rubric tuned all through 2026-09-10 barely distinguished
+jobs Andres would apply to from ones he rejected outright, and only half the
+top 100 were jobs he wanted. Every previous scoring change had been judged by
+eyeballing the top of the list; none had ever been measured.
+
+A harness now lives in the scratchpad (not committed — it depends on the
+private DB). Re-run it after ANY scoring change.
+
+### Four causes, each measured separately
+
+1. **Senior titles were underpunished.** Capping seniority at 4/20 costs 16
+   points; a full skills score gives 30. "Senior Analytics Engineer" scored
+   79, above a well-matched Bogota BI Analyst at 75. Senior now damps the
+   whole score (0.65), as do postings wanting `max_years + 2` or more years
+   whatever the title says. Evidence it is safe: of jobs with a senior title,
+   the verdicts were 50 not_a_fit / 8 unsure / **1** worth_applying.
+2. **Senior detection read the description.** `detect_seniority` falls back to
+   the body, where "work with senior stakeholders" is not evidence. The single
+   worth_applying casualty was N-iX's "Data Engineer (Snowflake)" — senior
+   only by prose. The damper uses `has_senior_title` (title only); the points
+   still use the old function.
+3. **The off-role skill override rescued every tech job.** Added on 09-10 to
+   save "Dev Python (PySpark/Airflow/PostgreSQL) - Remoto", it counted skills
+   anywhere — so UX Researcher, Total Rewards Analyst, Controllership
+   Specialist and DevOps Engineer all scored 65-75 with role=0, because their
+   bodies mention Python. It now counts only skills named in the TITLE, which
+   is exactly what distinguished the case it was built for. **This was the
+   single biggest fix.**
+4. **No language-requirement detection.** Skydropx RevOps Data Analyst scored
+   80 and is a flat no: "Indispensable: Portugues C1 o superior". Now a hard
+   exclusion, with an optional marker ("Deseable: Portugues avanzado") in the
+   surrounding window overriding it. First attempt used `portugu[eê]s` and
+   silently never matched the accented "Portugues" — the kind of bug that
+   passes every test you think to write.
+
+### Result
+
+```
+separation gap +8.0 -> +26.0
+not_a_fit above the WA median 16/105 -> 2/105
+top-100 precision 53% -> 74%
+```
+
+The worth_applying median did not move (65.0). The gain is entirely from
+pushing bad matches down, not from inflating good ones.
+
+### Lesson
+
+Every scoring change before today was justified by reading the top of a list
+and judging it sensible. That method produced a rubric with an 8-point
+separation. Verdicts are the only real feedback this system gets — score
+against them, and never tune a scorer by eye again.
+
+### Also fixed
+
+The LinkedIn digest footer ("New jobs from your other alerts" / "See all jobs
+on LinkedIn") parsed as a posting, with raw `<strong class="font-bold"...>`
+markup landing in the location field. Two stored rows. Some digests embed HTML
+inside the text/plain part, so fields are now tag-stripped defensively.

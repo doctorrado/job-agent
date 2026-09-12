@@ -154,3 +154,52 @@ def test_boilerplate_tech_list_does_not_inflate_skills():
     assert score_job(_job(description=real), profile).matched_skills == score_job(
         _job(description=padded), profile
     ).matched_skills
+
+
+def test_senior_title_damps_the_whole_score_not_just_seniority():
+    """Docking 16 seniority points was outweighed by a full 30 for skills, so
+    "Senior Analytics Engineer" scored 79 — above a well-matched Bogota BI
+    Analyst at 75 the reviewer actually wanted."""
+    profile = _profile()
+    description = "Build pipelines with Python, SQL and Airflow. " * 12
+    senior = score_job(_job(title="Senior Data Engineer", description=description), profile)
+    plain = score_job(_job(title="Data Engineer", description=description), profile)
+    assert "senior-level title" in senior.damping_reasons
+    assert senior.total < plain.total
+
+
+def test_a_years_gulf_damps_even_without_a_senior_title():
+    profile = _profile()
+    job = _job(
+        title="Data Engineer",
+        description="We need 8+ years of experience with Python, SQL and Airflow. " * 8,
+    )
+    result = score_job(job, profile)
+    assert any("years" in r for r in result.damping_reasons)
+
+
+def test_off_role_override_needs_skills_in_the_TITLE():
+    """Counting description matches rescued every tech job in existence:
+    UX Researcher and Total Rewards Analyst both scored 65 with role=0."""
+    profile = _profile()
+    body = "You will collaborate with teams using Python, SQL and Power BI. " * 12
+
+    # skills named in the title -> genuinely a data job under an odd name,
+    # the real case being "Dev Python (PySpark/Airflow/PostgreSQL) - Remoto"
+    titled = score_job(_job(title="Dev Python / SQL / Power BI", description=""), profile)
+    assert "not a target role" not in titled.damping_reasons
+
+    # skills only mentioned in passing in a long body -> still off-role
+    incidental = score_job(_job(title="UX Researcher", description=body), profile)
+    assert "not a target role" in incidental.damping_reasons
+
+
+def test_required_third_language_is_excluded_but_optional_is_not():
+    """Skydropx's RevOps Data Analyst scored 80 and was a flat no: it wants
+    "Portugues C1 o superior". Accents matter — [eê] silently never matched."""
+    profile = _profile()
+    required = _job(description="REQUISITOS: Indispensable: Portugués C1 o superior. " * 8)
+    assert score_job(required, profile).eligible is False
+
+    optional = _job(description="Deseable: Portugués avanzado. Python and SQL required. " * 8)
+    assert score_job(optional, profile).eligible is True

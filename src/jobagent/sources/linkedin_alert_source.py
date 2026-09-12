@@ -49,10 +49,16 @@ _NOISE_LINE = re.compile(
     r"your job alert (for|has been created)|"
     r"new jobs match your preferences|"
     r"a new job matches your preferences|"
-    r"you[’']ll receive notifications"
+    r"you[’']ll receive notifications|"
+    r"new jobs from your other alerts|"
+    r"see all jobs on linkedin"
     r")",
     re.I,
 )
+
+# Some digests embed HTML fragments inside the text/plain part, which landed
+# raw in the location field ("<strong class=\"font-bold\"...>Data Eng").
+_TAG = re.compile(r"<[^>]+>")
 
 
 class LinkedInAlertSource(JobSource):
@@ -114,9 +120,9 @@ def _parse_blocks(text: str) -> list[dict[str, str]]:
         if not id_match:
             continue
         lines = [
-            line.strip()
-            for line in chunk.splitlines()
-            if line.strip() and not _NOISE_LINE.match(line.strip())
+            clean
+            for clean in (_TAG.sub("", line).strip() for line in chunk.splitlines())
+            if clean and not _NOISE_LINE.match(clean)
         ]
         if len(lines) < 3:
             continue

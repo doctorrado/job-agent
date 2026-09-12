@@ -20,9 +20,11 @@ from jobagent.models.job import Job, Seniority
 from jobagent.models.profile import Profile
 from jobagent.pipeline.extract import (
     detect_seniority,
+    has_senior_title,
     matched_skills,
     remote_scope,
     requires_internship,
+    requires_missing_language,
     requires_us_work_authorization,
     role_relevance,
     salary_hourly_usd,
@@ -50,6 +52,17 @@ _ROLE_POINTS = {"primary": 20, "secondary": 12, "none": 0}
 _NO_SKILLS_DAMPING = 0.5
 _WRONG_PLACE_DAMPING = 0.6
 _OFF_ROLE_DAMPING = 0.6
+# A Senior/Staff/Lead/Principal title is strong evidence of a mismatch for
+# someone with 3 years, and docking seniority points alone did not express
+# that: losing 16 of 20 seniority points was outweighed by a full 30 for
+# skills, so "Senior Analytics Engineer" scored 79 — ABOVE a well-matched
+# Bogota BI Analyst at 75 that the reviewer wanted. Measured against 440 real
+# verdicts; see NOTES.md 2026-09-12.
+_SENIOR_DAMPING = 0.65
+# Years beyond his own that make a posting senior in substance whatever the
+# title says. Deliberately a gulf, not a gap: 4-5 years is a stretch, 6+ is a
+# different job.
+_YEARS_GULF = 2
 # ...but an unfamiliar title is only weak evidence, and real skill overlap
 # outvotes it. "Dev Python (PySpark/Airflow/PostgreSQL) - Remoto" in Colombia
 # matches no role keyword yet names three of Andres's skills in the title
@@ -85,6 +98,12 @@ def score_job(job: Job, profile: Profile) -> ScoreResult:
     if requires_internship(job):
         return ScoreResult(
             job=job, eligible=False, ineligible_reason="internship / student placement"
+        )
+
+    language = requires_missing_language(job)
+    if language is not None:
+        return ScoreResult(
+            job=job, eligible=False, ineligible_reason=f"requires {language} he does not speak"
         )
 
     salary_cop = salary_monthly_cop(job)
@@ -128,7 +147,19 @@ def score_job(job: Job, profile: Profile) -> ScoreResult:
     if remote_scope(job) == "other":
         damping *= _WRONG_PLACE_DAMPING
         reasons.append("located where you cannot work")
-    if relevance == "none" and len(skills) < _OFF_ROLE_SKILL_OVERRIDE:
+    years = years_required(job)
+    far_beyond = years is not None and years >= profile.max_years_experience + _YEARS_GULF
+    if has_senior_title(job) or far_beyond:
+        damping *= _SENIOR_DAMPING
+        reasons.append("senior-level title" if has_senior_title(job) else f"wants {years}+ years")
+    # The override only counts skills named in the TITLE. "Dev Python
+    # (PySpark/Airflow/PostgreSQL) - Remoto" earns it; "DevOps Engineer" whose
+    # 3,475-char body mentions Python in passing does not. Counting
+    # description matches rescued every tech job in existence — UX Researcher,
+    # Total Rewards Analyst and Controllership Specialist all scored 65+ with
+    # role=0 before this was narrowed.
+    title_skills = matched_skills(job.model_copy(update={"description": ""}), profile)
+    if relevance == "none" and len(title_skills) < _OFF_ROLE_SKILL_OVERRIDE:
         damping *= _OFF_ROLE_DAMPING
         reasons.append("not a target role")
     total = round(sum(breakdown.values()) * damping)
