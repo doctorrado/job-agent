@@ -1781,3 +1781,25 @@ and drops State entirely. So:
 `autofill` now re-reads and runs again while a pass is still filling
 something, bounded at three passes total. A pass that fills nothing new never
 will, and the bound stops it looping on a form that fights back.
+
+### Add first, remove second (2026-09-12)
+
+`TimeoutError opening the dropdown` on Country Phone Code was self-inflicted:
+clearing the chip BEFORE clicking made Workday re-render the widget, which
+invalidated the stamped `data-jobagent` selector, so the click had nothing to
+click. Order reversed — add the new value, then drop the stale chip, by which
+point nothing else needs the element.
+
+Two smaller things fell out of it:
+
+* **Forced click as a fallback.** Playwright waits for an element to be
+  stable and unobscured; a chip sitting over the field can fail that
+  indefinitely. A forced click is still a click on THAT element, which is the
+  part that matters.
+* **The removal has to happen before the success return.** Putting it after
+  the Enter loop meant never running it, because the loop returns on the
+  first success — leaving both Colombia (+57) and the United States selected.
+  A multi-select adds; it never replaces.
+
+Verified: `['Colombia (+57)']` -> `['United States of America (+1)']`, one
+chip in, one chip out.

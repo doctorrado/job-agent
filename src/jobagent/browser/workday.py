@@ -297,22 +297,33 @@ async def selected_chips(page, selector: str) -> list[str]:
     )
 
 
-async def clear_chips(page, selector: str) -> int:
-    """Remove every already-selected chip. Returns how many went.
+async def clear_chips(page, selector: str, keep: str | None = None) -> int:
+    """Remove selected chips, optionally keeping the one matching `keep`.
 
-    A multi-select ADDS rather than replaces, so leaving the old chip in
-    place means ending up with both Colombia (+57) and the United States.
+    A multi-select ADDS rather than replaces, so the old chip has to go or
+    both Colombia (+57) and the United States end up selected.
     """
+    wanted = strip_accents(keep).casefold() if keep else None
     removed = 0
     for _ in range(6):  # bounded: never loop on a chip that will not go
-        buttons = page.locator(
-            '[role=option][aria-label*="press delete" i] button, '
-            '[role=option][aria-label*="press delete" i] [role=button]'
-        )
-        if await buttons.count() == 0:
+        chips = page.locator('[role=option][aria-label*="press delete" i]')
+        target = None
+        for index in range(await chips.count()):
+            chip = chips.nth(index)
+            text = (await chip.get_attribute("aria-label")) or ""
+            if wanted and wanted in strip_accents(text).casefold():
+                continue  # this is the one we just chose
+            target = chip
             break
+        if target is None:
+            break
+        button = target.locator('button, [role=button]')
         try:
-            await buttons.first.click(timeout=2500)
+            if await button.count():
+                await button.first.click(timeout=2500)
+            else:
+                await target.click(timeout=2500)
+                await page.keyboard.press("Delete")
             await page.wait_for_timeout(300)
             removed += 1
         except Exception:  # noqa: BLE001
@@ -375,25 +386,29 @@ async def choose_option(page, selector: str, wanted: str) -> tuple[bool, str]:
     except Exception as exc:  # noqa: BLE001
         return False, f"{type(exc).__name__} locating the field"
 
-    # Clear any existing chip FIRST. A multi-select adds rather than
-    # replaces, so the old value has to go — and removing it afterwards is
-    # not an option: clicking the chip's "x" takes focus off the field, so
-    # anything typed next goes to the page instead of the filter box.
+    # Read what is selected, but do NOT remove it yet. Clearing first made
+    # Workday re-render the widget, which invalidated the stamped selector
+    # and left the click timing out. Add the new value, then drop the stale
+    # chip — by then nothing else needs the element.
     had_chips = False
     try:
         existing = await selected_chips(page, selector)
         had_chips = bool(existing)
-        if existing and not any(matches(chip) for chip in existing):
-            await clear_chips(page, selector)
-            await page.wait_for_timeout(300)
     except Exception:  # noqa: BLE001 - a field without chips is the normal case
-        pass
+        existing = []
 
     try:
-        await handle.click(timeout=5000)
+        await handle.click(timeout=4000)
         await page.wait_for_timeout(600)
-    except Exception as exc:  # noqa: BLE001
-        return False, f"{type(exc).__name__} opening the dropdown"
+    except Exception:  # noqa: BLE001
+        # Playwright waits for the element to be stable and unobscured; a
+        # chip sitting over the field can fail that forever. A forced click
+        # is still a click on THIS element, which is the part that matters.
+        try:
+            await handle.click(timeout=3000, force=True)
+            await page.wait_for_timeout(600)
+        except Exception as exc:  # noqa: BLE001
+            return False, f"{type(exc).__name__} opening the dropdown"
 
     # GUARD 2: never type or press Enter unless a dropdown actually opened.
     # Without this, a click that missed sent the keystrokes to whatever had
@@ -450,6 +465,14 @@ async def choose_option(page, selector: str, wanted: str) -> tuple[bool, str]:
             chips_now = await selected_chips(page, selector) if had_chips else []
             if had_chips:
                 if any(matches(chip) for chip in chips_now):
+                    # Drop the old chip BEFORE returning. Doing it after the
+                    # loop meant never doing it: the loop returns on the first
+                    # success, so both Colombia (+57) and the United States
+                    # stayed selected.
+                    if len(chips_now) > 1:
+                        await clear_chips(page, selector, keep=wanted)
+                        await page.wait_for_timeout(300)
+                        chips_now = await selected_chips(page, selector)
                     return True, f"{', '.join(chips_now)} (Enter x{attempt})"
             elif matches(await shown_value()):
                 return True, f"{await shown_value()} (Enter x{attempt})"
