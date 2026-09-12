@@ -19,6 +19,7 @@ import typer
 import yaml
 
 from jobagent import __version__
+from jobagent.answers.resolve import resolve
 from jobagent.config import get_settings, load_profile
 from jobagent.discovery.ats_probe import Candidate, ProbeState, is_probeable, probe_company
 from jobagent.logging import configure_logging, get_logger
@@ -913,3 +914,43 @@ def answers_command(
     for row in rows:
         typer.echo(f"  [{row.category}] {row.question}")
         typer.echo(f"      -> {row.answer}   (asked {row.times_used}x)")
+
+
+@app.command("answer")
+def answer_command(
+    question: str = typer.Argument(..., help="The question the form is asking"),
+) -> None:
+    """Answer one application-form question from what is already known.
+
+    Checks the answer bank first (something you have actually answered), then
+    the profile (years per technology, work authorization, salary). Says so
+    plainly when it does not know, rather than guessing — a wrong answer on an
+    application is worse than an unanswered one.
+    """
+    settings = get_settings()
+    profile = load_profile(settings.profile_path)
+    answers = AnswerRepository(make_session_factory(settings.db_path)())
+
+    if is_sensitive(question):
+        typer.echo(
+            "Refused: demographic and sensitive questions are never answered "
+            "automatically. Answer that one yourself."
+        )
+        raise typer.Exit(1)
+
+    banked = answers.lookup(question)
+    if banked is not None:
+        typer.echo(f"{banked.answer}")
+        typer.echo(f"   (from the answer bank, asked {banked.times_used}x)")
+        return
+
+    resolved = resolve(question, profile)
+    if resolved is None:
+        typer.echo("Not known. Answer it yourself, then bank it:")
+        typer.echo(f'   jobagent remember -q "{question}" -a "<your answer>"')
+        raise typer.Exit(1)
+
+    typer.echo(resolved.answer)
+    typer.echo(f"   (from {resolved.source})")
+    if not resolved.confident:
+        typer.echo("   ^ low confidence — check this before using it.")

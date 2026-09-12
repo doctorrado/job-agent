@@ -928,3 +928,39 @@ Also: `_parse_iso_date` now returns None instead of raising. Recruitee writes
 "2026-09-10 09:36:16 UTC", which `fromisoformat` rejects — and because the
 per-company handler catches ValueError, a whole board would have been dropped
 over a date field nothing depends on.
+
+## 2026-09-12 — answer bank, resolver side (Phase 5 -> Phase 7 bridge)
+
+`remember`/`answers` stored what Andres had answered. This is the lookup half:
+given a form question, say what the answer is and where it came from, or say
+honestly that it is not known. Three sources in order of authority — the bank
+(something he really answered), the profile (years per technology, work
+authorization, salary), then nothing.
+
+`Profile.skill_years` is new: a lowercased technology -> years map.
+"How many years of X?" is the most common variable question on any form and
+the only one the bank cannot derive from something else.
+
+Design decisions worth keeping:
+
+- **Absent means "not stated", never zero.** A skill in `skills` without an
+  entry in `skill_years` returns "years not recorded" at low confidence. He
+  HAS Power BI; answering 0 would be a lie and guessing would be worse.
+- **Longest matching skill wins.** With 65 overlapping names, "Microsoft SQL
+  Server" must not be answered with the years recorded for plain "SQL".
+- **Sponsorship is answered conditionally**, because the true answer differs
+  by role location: none needed for Colombia, required for the US.
+- **Sensitive questions are refused by the resolver too**, not only by the
+  bank. A resolver that declined to STORE them but happily ANSWERED them
+  would defeat the point.
+- Unknown questions print the exact `remember` command to bank the answer, so
+  using the tool is what fills the bank.
+
+### The years table itself is NOT yet in profile.yaml
+
+Only three durations are stated anywhere in candidate_profile.md: python 3,
+sql 3, airflow 1. A draft for the other ~50 was derived from documented work
+dates (Toyota Mississippi Sep-Dec 2024; Mazda Toyota May-Aug 2025; the
+portfolio project) and handed to Andres to CORRECT before pasting. Deriving is
+not stating, and a wrong number here goes straight onto an application form —
+this is the "never fabricate experience" rule at its most literal.

@@ -51,6 +51,11 @@ class Profile(BaseModel):
     # Skills you can genuinely back up with real experience. The resume
     # system will never claim a skill that isn't in this list.
     skills: list[str] = Field(default_factory=list)
+    # Years per technology, lowercased keys. "How many years of X?" is the
+    # most common variable question on an application form, and it is the one
+    # thing the answer bank cannot derive from anything else. Absent from
+    # here means "not stated" — never "zero" and never a guess.
+    skill_years: dict[str, float] = Field(default_factory=dict)
     preferred_industries: list[str] = Field(default_factory=list)
     locations: LocationPreferences = Field(default_factory=LocationPreferences)
     work_authorization: WorkAuthorization = Field(default_factory=WorkAuthorization)
