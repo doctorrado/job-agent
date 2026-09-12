@@ -21,7 +21,14 @@ import yaml
 from jobagent import __version__
 from jobagent.answers.form import Outcome, clean_label, fill_form
 from jobagent.answers.resolve import ResolvedAnswer, resolve
-from jobagent.browser.workday import CDP_ENDPOINT, apply_answers, read_fields
+from jobagent.browser.workday import (
+    CDP_ENDPOINT,
+    apply_answers,
+    debug_port_is_open,
+    launch_debug_browser,
+    pick_application_tab,
+    read_fields,
+)
 from jobagent.config import get_settings, load_contact, load_history, load_profile
 from jobagent.discovery.ats_probe import Candidate, ProbeState, is_probeable, probe_company
 from jobagent.logging import configure_logging, get_logger
@@ -1047,6 +1054,14 @@ def autofill_command(
     history = load_history()
     answers_repo = AnswerRepository(make_session_factory(settings.db_path)())
 
+    if not debug_port_is_open():
+        typer.echo(
+            "No debug browser is running.\n"
+            "Start one with:  uv run jobagent browser\n"
+            "then log in, open the application form, and run this again."
+        )
+        raise typer.Exit(1)
+
     async def run() -> None:
         from playwright.async_api import async_playwright
 
@@ -1055,9 +1070,12 @@ def autofill_command(
                 browser = await pw.chromium.connect_over_cdp(endpoint)
             except Exception as exc:  # noqa: BLE001
                 typer.echo(
-                    f"Could not attach to Chrome at {endpoint} ({type(exc).__name__}).\n"
-                    "Start it with:  google-chrome --remote-debugging-port=9222\n"
-                    "then open the application form and run this again."
+                    f"Could not attach to Chrome at {endpoint} ({type(exc).__name__}).\n\n"
+                    "Nothing is listening on that port. The usual cause is that Chrome\n"
+                    "was already running: it then ignores --remote-debugging-port and\n"
+                    "just hands the URL to the existing window.\n\n"
+                    "Start the right browser with:\n"
+                    "   uv run jobagent browser\n"
                 )
                 raise typer.Exit(1) from exc
 
@@ -1066,13 +1084,22 @@ def autofill_command(
             if not pages:
                 typer.echo("No open tabs found in that browser.")
                 raise typer.Exit(1)
-            page = pages[-1]
-            typer.echo(f"Attached to: {page.url[:90]}\n")
+            if len(pages) > 1:
+                typer.echo(f"{len(pages)} tabs open:")
+                for candidate in pages:
+                    typer.echo(f"   {(candidate.url or '')[:88]}")
+            page = pick_application_tab(pages)
+            typer.echo(f"\nUsing: {page.url[:88]}\n")
 
             fields = await read_fields(page)
             if not fields:
-                typer.echo("No fillable fields found on this page.")
+                typer.echo(
+                    "No fillable fields found on this page or its frames.\n"
+                    "If the form is visible, it may not have loaded yet — "
+                    "wait for it and run again."
+                )
                 return
+            typer.echo(f"{len(fields)} fields found.\n")
 
             labels = [f"{f['label']}{'*' if f['required'] else ''}" for f in fields]
             banked = {}
@@ -1106,3 +1133,26 @@ def autofill_command(
             )
 
     asyncio.run(run())
+
+
+@app.command("browser")
+def browser_command(
+    url: str = typer.Argument("", help="Optional URL to open"),
+) -> None:
+    """Start the browser that `autofill` attaches to.
+
+    Uses a dedicated profile at ~/.jobagent-chrome rather than your everyday
+    one. That is not fussiness: Chrome IGNORES --remote-debugging-port when an
+    instance is already running on the same profile — the new process hands
+    the URL to the old one and exits, and nothing ever listens on the port.
+    A separate profile avoids that, and since the directory persists, logging
+    in to an employer's candidate account is a one-time cost.
+    """
+    started, message = launch_debug_browser()
+    typer.echo(message)
+    if not started:
+        raise typer.Exit(1)
+    if url:
+        typer.echo(f"Open it at: {url}")
+    typer.echo("\nLog in and navigate to the application form, then run:")
+    typer.echo("   uv run jobagent autofill --dry-run")

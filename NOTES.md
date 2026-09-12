@@ -1294,3 +1294,33 @@ This machine has Chrome **Canary** at `/opt/google/chrome-canary/`, not stock
 Chrome, so Playwright's `channel="chrome"` fails. Irrelevant to the real
 flow (CDP attaches to whatever he started) but it is why the test harness
 passes `executable_path`.
+
+### Why the first autofill run did nothing (2026-09-12)
+
+Two causes, neither in the code:
+
+1. `jobagent` is not on PATH — it is `uv run jobagent`.
+2. **Chrome ignores `--remote-debugging-port` when an instance is already
+   running.** The new process hands the URL to the existing window and exits,
+   so nothing ever listens on the port. Andres's browser opened and his link
+   loaded, which made it look like the flag had worked.
+
+Fixed by removing the whole class of error: `jobagent browser` launches
+Chrome with a dedicated profile at `~/.jobagent-chrome`, which cannot collide
+with a running instance. The directory persists, so logging in to an
+employer's candidate account is a one-time cost per employer — and the
+profile stays isolated from his everyday browsing.
+
+`autofill` now checks the port before doing anything and names the cause
+instead of failing obscurely.
+
+Two more things fixed before they could bite on a real form:
+
+* **Tab selection.** It took `pages[-1]`, which fails the moment a second
+  window is open — which it always is. Now prefers a tab on a known ATS host
+  (workday/greenhouse/lever/ashby/smartrecruiters/icims/taleo/successfactors)
+  and lists what it saw.
+* **iframes.** Workday renders in the main document but several ATSes use an
+  iframe, where a main-frame-only search reports "no fields found" on a page
+  that visibly has plenty. Every frame is searched, cross-origin ones skipped
+  quietly, duplicates removed.

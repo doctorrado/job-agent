@@ -18,11 +18,47 @@ employer's tenant.
 
 from __future__ import annotations
 
+import shutil
+import socket
+import subprocess
 from dataclasses import dataclass
+from pathlib import Path
 
 from jobagent.answers.form import FilledField, Outcome, clean_label
 
 CDP_ENDPOINT = "http://localhost:9222"
+DEBUG_PORT = 9222
+
+# A dedicated profile directory, not the everyday one. Chrome ignores
+# --remote-debugging-port when an instance is ALREADY running on the same
+# profile: the new process just hands the URL to the old one and exits, so
+# nothing ever listens on the port. A separate --user-data-dir sidesteps that
+# entirely, and because the directory persists, logging in to an ATS
+# candidate account here is a one-time cost per employer.
+DEBUG_PROFILE = Path.home() / ".jobagent-chrome"
+
+_CHROME_CANDIDATES = (
+    "/opt/google/chrome-canary/google-chrome-canary",
+    "/opt/google/chrome/google-chrome",
+    "/usr/bin/google-chrome",
+    "/usr/bin/chromium",
+    "/usr/bin/chromium-browser",
+    "/usr/bin/brave-browser",
+)
+
+
+def find_chrome() -> str | None:
+    """First Chrome-family browser present on this machine."""
+    for candidate in _CHROME_CANDIDATES:
+        if Path(candidate).exists():
+            return candidate
+    return shutil.which("google-chrome") or shutil.which("chromium")
+
+
+def debug_port_is_open(port: int = DEBUG_PORT) -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.settimeout(0.6)
+        return probe.connect_ex(("127.0.0.1", port)) == 0
 
 # Workday marks its inputs with data-automation-id; other ATSes use plain
 # labels. Both paths are tried, most specific first.
@@ -49,6 +85,27 @@ def _looks_like_password(label: str, kind: str) -> bool:
     return kind == "password" or any(word in lowered for word in _NEVER_FILL)
 
 
+# Hosts that look like an application rather than a random tab.
+_ATS_HOSTS = (
+    "myworkdayjobs.com", "greenhouse.io", "lever.co", "ashbyhq.com",
+    "smartrecruiters.com", "recruitee.com", "workable.com", "icims.com",
+    "taleo.net", "successfactors.com", "oraclecloud.com",
+)
+
+
+def pick_application_tab(pages: list):
+    """The tab most likely to BE the application.
+
+    Taking the last tab was a guess that fails the moment a second window is
+    open — which it always is. A tab on a known ATS host wins; otherwise the
+    last one, which is usually the most recently opened.
+    """
+    for page in pages:
+        if any(host in (page.url or "") for host in _ATS_HOSTS):
+            return page
+    return pages[-1]
+
+
 async def read_fields(page) -> list[PageField]:
     """Every visible, fillable field on the current page, with its label.
 
@@ -56,8 +113,7 @@ async def read_fields(page) -> list[PageField]:
     then aria-label, then a <label for>, then placeholder. Real forms use all
     four and a single strategy misses most of them.
     """
-    return await page.evaluate(
-        """
+    script = """
         () => {
           const out = [];
           const els = document.querySelectorAll(
@@ -86,7 +142,19 @@ async def read_fields(page) -> list[PageField]:
           return out;
         }
         """
-    )
+    # Workday renders its form in the main document, but other ATSes use an
+    # iframe. Searching every frame costs nothing and avoids "no fields found"
+    # on a page that visibly has plenty.
+    seen: list[dict] = []
+    for frame in page.frames:
+        try:
+            found = await frame.evaluate(script)
+        except Exception:  # noqa: BLE001 - a cross-origin frame is not an error
+            continue
+        for item in found:
+            if item not in seen:
+                seen.append(item)
+    return seen
 
 
 async def apply_answers(page, fields: list[dict], answers: list[FilledField]) -> dict:
@@ -134,3 +202,26 @@ async def apply_answers(page, fields: list[dict], answers: list[FilledField]) ->
             skipped.append((label, f"could not fill: {type(exc).__name__}"))
 
     return {"filled": filled, "skipped": skipped}
+
+
+def launch_debug_browser(port: int = DEBUG_PORT) -> tuple[bool, str]:
+    """Start Chrome with debugging on, in its own profile. (started, message)"""
+    if debug_port_is_open(port):
+        return True, f"Chrome is already listening on port {port}."
+    chrome = find_chrome()
+    if chrome is None:
+        return False, "No Chrome-family browser found on this machine."
+    DEBUG_PROFILE.mkdir(parents=True, exist_ok=True)
+    subprocess.Popen(
+        [
+            chrome,
+            f"--remote-debugging-port={port}",
+            f"--user-data-dir={DEBUG_PROFILE}",
+            "--no-first-run",
+            "--no-default-browser-check",
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    return True, f"Started {Path(chrome).name} on port {port} (profile: {DEBUG_PROFILE})."

@@ -106,3 +106,25 @@ def test_one_broken_field_does_not_abort_the_rest():
     page, report = asyncio.run(_run(fields, answers, _FakePage(fail_on="A")))
     assert [v for _, v in report["filled"]] == ["2"]
     assert any("could not fill" in why for _, why in report["skipped"])
+
+
+class _FakeTab:
+    def __init__(self, url: str) -> None:
+        self.url = url
+
+
+def test_the_application_tab_is_chosen_over_whatever_is_last():
+    """Taking the last tab fails the moment a second window is open, which it
+    always is."""
+    from jobagent.browser.workday import pick_application_tab
+
+    tabs = [
+        _FakeTab("https://mail.google.com/"),
+        _FakeTab("https://iqvia.wd1.myworkdayjobs.com/en-US/IQVIA/job/x/apply"),
+        _FakeTab("https://news.ycombinator.com/"),
+    ]
+    assert "myworkdayjobs" in pick_application_tab(tabs).url
+
+    # no ATS tab -> fall back to the most recently opened
+    plain = [_FakeTab("https://a.com"), _FakeTab("https://b.com")]
+    assert pick_application_tab(plain).url == "https://b.com"
